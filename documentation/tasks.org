@@ -1,0 +1,39 @@
+#+title: Tasks
+
+* TODO [#A] Unit test cases of configurations
+* TODO [#A] Create implementations of the Actix app server
+** TODO Injest server implementation
+*** TODO Create a tonic server
+*** TODO Create a flight server
+** TODO Query server implementation
+*** TODO Create a health endpoint
+*** TODO Create an add regex endpoint
+** TODO Flientbit agent
+*** TODO Create a golang plugin
+It should create arrow flight batches and ship it over grpc to collector
+**** TODO [#A] Create a skeleton plugin
+**** TODO [#A] Read and print the data
+**** TODO Create a contract for http, grpc traffic.
+**** TODO Create proxy interceptors in the contract.
+**** TODO Create a batching function
+**** TODO Side channel metadata - correlation - IP address, host id etc.
+
+
+* TODO Create ebpf example in aya for XDP packet filtering
+** TODO Add support for maps to filter data
+** TODO Add support for actix web application.
+
+
+* TODO Create a CI pipeline and build script
+** TODO Create a build.rs script for protobuf generations
+** TODO Create a actions script for building pipeline.
+** TODO Create a make script
+** TODO Create a script for packaging into different distributions.
+
+* TODO Actor models
+
+
+* TODO Create a custom table component in Apache superset
+
+
+* TODO Explore web assembly for own UI

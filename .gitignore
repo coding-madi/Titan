@@ -1,2 +1,6 @@
 /target
 rs_cd.log
+*.html
+*.tex
+*.pdf
+*.odt
