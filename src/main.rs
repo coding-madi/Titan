@@ -1,8 +1,8 @@
 use actix_web::{App, HttpServer, web};
-use poros::logging::{
+use poros::{config::yaml_reader::read_configuration, logging::{
     file_writer::FileWriter,
     subscriber::{get_subscribers, init_subscriber},
-};
+}};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -10,6 +10,7 @@ async fn main() -> std::io::Result<()> {
     let subscriber = get_subscribers("poros", "INFO", file_writer);
     init_subscriber(subscriber);
 
+    read_configuration();
     HttpServer::new(|| {
         App::new().route(
             "/",

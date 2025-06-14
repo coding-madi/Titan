@@ -1,0 +1,7 @@
+database:
+  host: localhost
+  port: 5555
+  username: admin
+  password: welcome1
+  database_name: test
+server: INJEST
