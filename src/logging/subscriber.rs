@@ -1,9 +1,9 @@
 use tracing::subscriber::set_global_default;
-use tracing::{error, trace, Subscriber};
+use tracing::{Subscriber, error, trace};
 use tracing_bunyan_formatter::JsonStorageLayer;
 use tracing_subscriber::fmt;
-use tracing_subscriber::{EnvFilter, Registry, fmt::MakeWriter};
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+use tracing_subscriber::{EnvFilter, Registry, fmt::MakeWriter};
 
 pub fn get_subscribers<S, W>(_name: S, level: S, writer: W) -> impl Subscriber
 where
@@ -28,6 +28,6 @@ where
 pub fn init_subscriber(subscriber: impl Subscriber + Send + Sync) {
     match set_global_default(subscriber) {
         Ok(_) => trace!("Initialized trace subscriber"),
-        Err(err) => error!("Failed to initalize trace subscriber - {:?}", err)
+        Err(err) => error!("Failed to initalize trace subscriber - {:?}", err),
     }
 }
