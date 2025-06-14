@@ -1,0 +1,34 @@
+* Log monitoring
+** Dependencies
+
+*** Linker
+The linking takes most of the time during the development cycle. A faster linker would go a long way.
+
+#+BEGIN_SRC
+sudo yum install lld clang
+#+END_SRC
+
+Add the below linkers to the =.cargo/config.toml= file
+
+
+#+BEGIN_SRC
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "linker=clang", "-C", "link-arg=-fuse-ld=lld"]
+#+END_SRC
+
+*** development tools
+
+Install cargo watch
+
+#+BEGIN_SRC
+cargo install cargo-watch
+#+END_SRC
+
+
+#+BEGIN_SRC
+rustup component add rustfmt
+#+END_SRC
+
+#+BEGIN_SRC
+rustup component add clippy
+#+END_SRC
