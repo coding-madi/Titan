@@ -15,6 +15,12 @@ pub struct DatabaseSettings {
 pub struct Settings {
     pub database: DatabaseSettings,
     pub server: ServerType,
+    pub flight: Flight,
+}
+
+#[derive(Deserialize)]
+pub struct Flight {
+    pub address: String,
 }
 
 #[derive(Deserialize)]
