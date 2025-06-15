@@ -4,3 +4,4 @@ rs_cd.log
 *.tex
 *.pdf
 *.odt
+**/venv
