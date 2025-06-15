@@ -1,10 +1,10 @@
-use std::io;
-
 use tokio::sync::oneshot::Sender;
 
 use crate::config::yaml_reader::Settings;
 
 pub trait Server {
+    type Error: std::error::Error + Send + Sync + 'static;
+
     fn configure_routes(config: &Settings)
     where
         Self: Sized;
@@ -15,10 +15,10 @@ pub trait Server {
         Output = Result<
             (
                 Self,
-                impl Future<Output = io::Result<()>> + Send,
+                impl Future<Output = Result<(), Self::Error>> + Send,
                 Option<Sender<()>>,
             ),
-            io::Error,
+            Self::Error,
         >,
     > + Send
     where
