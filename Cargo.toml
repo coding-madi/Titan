@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+actix = "0.13.5"
 actix-web = "4.11.0"
 tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread", "fs"]}
+tonic = "0.12.3"
 
 # observability
 tracing = {version = "0.1.41"}
@@ -21,3 +23,8 @@ secrecy = { version = "0.10.3", features = ["serde"] }
 serde = "1.0.219"
 serde_derive = "1.0.219"
 config = { version = "0.15.11", features = ["yaml"] } # read yaml, json file
+arrow = {version = "=53.2.0"}
+arrow-array = "=53.2.0"
+arrow-flight = "=53.2.0"
+arrow-ipc = "=53.2.0"
+chrono = "=0.4.38"

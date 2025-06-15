@@ -1,8 +1,11 @@
 use actix_web::{App, HttpServer, web};
-use poros::{config::yaml_reader::read_configuration, logging::{
-    file_writer::FileWriter,
-    subscriber::{get_subscribers, init_subscriber},
-}};
+use poros::{
+    config::yaml_reader::read_configuration,
+    logging::{
+        file_writer::FileWriter,
+        subscriber::{get_subscribers, init_subscriber},
+    },
+};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
