@@ -18,7 +18,6 @@ It should create arrow flight batches and ship it over grpc to collector
 **** TODO Create a batching function
 **** TODO Side channel metadata - correlation - IP address, host id etc.
 
-
 * TODO Create ebpf example in aya for XDP packet filtering
 ** TODO Add support for maps to filter data
 ** TODO Add support for actix web application.
@@ -31,9 +30,18 @@ It should create arrow flight batches and ship it over grpc to collector
 ** TODO Create a script for packaging into different distributions.
 
 * TODO Actor models
+** TODO Actor for managing regex patterns
+** TODO Actor for parsing json and converting into arrow
+** TODO Actor for sequential writing of data
+** TODO Actor for caching the parsed arrow buffers
 
 
-* TODO Create a custom table component in Apache superset
+* TODO Create a custom table component in Apache superset :REACT:UI:
 
 
 * TODO Explore web assembly for own UI
+
+* TODO Understand the OTEL contract for logs
+We should strive to reuse these formats, we need interoperability and creating our own agents would prove too costly.
+** TODO Check how protobuf formats are translated into arrow columns
+** TODO Create a =build.rs= script with protobuf compilation and generations.
