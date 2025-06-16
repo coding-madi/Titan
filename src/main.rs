@@ -1,5 +1,5 @@
-use std::io::{Error, ErrorKind};
-
+use poros::config::yaml_reader::ServerType::INJEST;
+use poros::servers::injest_server::InjestServer;
 use poros::servers::server::Server;
 use poros::{
     config::yaml_reader::read_configuration,
@@ -8,8 +8,6 @@ use poros::{
         subscriber::{get_subscribers, init_subscriber},
     },
 };
-use poros::config::yaml_reader::ServerType::INJEST;
-use poros::servers::injest_server::InjestServer;
 use tracing::info;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -22,8 +20,7 @@ async fn main() -> std::io::Result<()> {
 
     match config.server {
         INJEST => {
-            let _ = InjestServer::start_server(&config)
-                .await;
+            let _ = InjestServer::start_server(&config).await;
         }
         _ => {
             info!("Query server is not implemented yet");

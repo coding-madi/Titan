@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use actix::Actor;
 use arrow_flight::flight_service_server::FlightServiceServer;
-use tokio::{signal, sync::oneshot::{self, Sender}};
+use tokio::{
+    signal,
+    sync::oneshot::{self, Sender},
+};
 use tracing::info;
 
 use crate::{
@@ -68,7 +71,7 @@ impl Server for InjestServer {
                     tracing::warn!("Failed to send shutdown signal: Receiver already dropped.");
                 });
             });
-            
+
             // Start the shutdown handler as a future, we need to map the error to ServerError and still return a Future<Result<(), ServerError>>
             let server_run_future = async move {
                 info!("Flight server started at: {}", s);

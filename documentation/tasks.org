@@ -1,6 +1,12 @@
 #+title: Tasks
 
-* TODO [#A] Unit test cases of configurations
+* TODO Understand the OTEL contract for logs :SPIKE:
+We should strive to reuse these formats, we need interoperability and creating our own agents would prove too costly.
+** TODO Check how protobuf formats are translated into arrow columns
+** TODO Create a =build.rs= script with protobuf compilation and generations.
+
+* TODO [#A] Unit test cases of configurations :KUBER:
+
 * TODO [#A] Create implementations of the Actix app server
 ** TODO Injest server implementation
 *** TODO Create a tonic server
@@ -8,7 +14,11 @@
 ** TODO Query server implementation
 *** TODO Create a health endpoint
 *** TODO Create an add regex endpoint
-** TODO Flientbit agent
+
+* TODO Datafusion based SQL server
+** TODO datafusion-flight-sql-server
+
+* TODO Flientbit agent
 *** TODO Create a golang plugin
 It should create arrow flight batches and ship it over grpc to collector
 **** TODO [#A] Create a skeleton plugin
@@ -22,7 +32,6 @@ It should create arrow flight batches and ship it over grpc to collector
 ** TODO Add support for maps to filter data
 ** TODO Add support for actix web application.
 
-
 * TODO Create a CI pipeline and build script
 ** TODO Create a build.rs script for protobuf generations
 ** TODO Create a actions script for building pipeline.
@@ -32,16 +41,23 @@ It should create arrow flight batches and ship it over grpc to collector
 * TODO Actor models
 ** TODO Actor for managing regex patterns
 ** TODO Actor for parsing json and converting into arrow
+*** TODO Explore *RAYON* for parallelism, we need not use actors because json parsing does not hold state.
 ** TODO Actor for sequential writing of data
 ** TODO Actor for caching the parsed arrow buffers
+** TODO
 
+
+* TODO Datafusion
+** TODO Query the data using datafusion.
+** TODO Try to see of the query can be called from external clients.
+** TODO Check if SQLAlchemy can be made to work with the Datafusion.
 
 * TODO Create a custom table component in Apache superset :REACT:UI:
 
-
 * TODO Explore web assembly for own UI
 
-* TODO Understand the OTEL contract for logs
-We should strive to reuse these formats, we need interoperability and creating our own agents would prove too costly.
-** TODO Check how protobuf formats are translated into arrow columns
-** TODO Create a =build.rs= script with protobuf compilation and generations.
+* TODO AI based analysis
+** TODO Self healing :POC:
+** TODO Edge analysis
+** TODO Analyse the gather already gathered and get some
+* TODO

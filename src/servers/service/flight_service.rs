@@ -1,15 +1,18 @@
 use crate::actors::broadcast::Broadcaster;
 use actix::{Addr, dev::Stream};
+use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
+use arrow_flight::utils::flight_data_to_arrow_batch;
 use arrow_flight::{
     Action, ActionType, Criteria, Empty, FlightData, FlightDescriptor, FlightInfo,
     HandshakeRequest, HandshakeResponse, PollInfo, PutResult, SchemaResult, Ticket,
     flight_service_server::FlightService,
 };
+use futures_util::StreamExt;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status, Streaming};
-
+use tracing::info;
 pub struct LogFlightServer {
     pub data: Arc<Mutex<HashMap<String, RecordBatch>>>,
     pub broadcast_actor: Arc<Addr<Broadcaster>>,
@@ -36,9 +39,55 @@ impl FlightService for LogFlightServer {
 
     async fn do_put(
         &self,
-        _request: Request<Streaming<FlightData>>,
+        request: Request<Streaming<FlightData>>,
     ) -> Result<Response<Self::DoPutStream>, Status> {
-        unimplemented!()
+        let mut flight_data_stream = request.into_inner();
+        let mut descriptor_opt: Option<arrow_flight::FlightDescriptor> = None;
+        let mut schema_opt: Option<Arc<Schema>> = None;
+        let mut received_batches: Vec<RecordBatch> = Vec::new();
+
+        while let Some(flight_data_res) = flight_data_stream.next().await {
+            let flight_data = flight_data_res?; // Automatically handles errors
+
+            // First message may contain descriptor
+            if descriptor_opt.is_none() {
+                if let Some(descriptor) = flight_data.flight_descriptor.clone() {
+                    descriptor_opt = Some(descriptor);
+                    info!("Received flight descriptor: {:?}", descriptor_opt);
+                }
+            }
+
+            // Try to parse schema if not already parsed
+            if schema_opt.is_none() && !flight_data.data_header.is_empty() {
+                let schema = Schema::try_from(&flight_data).map_err(|e| {
+                    Status::invalid_argument(format!("Failed to parse schema: {}", e))
+                })?;
+                schema_opt = Some(Arc::new(schema));
+                continue; // Schema messages do not contain data
+            }
+
+            // Parse actual RecordBatch
+            if let Some(schema) = &schema_opt {
+                if !flight_data.data_body.is_empty() {
+                    let batch = flight_data_to_arrow_batch(
+                        &flight_data,
+                        schema.clone(),
+                        &Default::default(),
+                    )
+                    .map_err(|e| {
+                        Status::internal(format!("Failed to convert to RecordBatch: {}", e))
+                    })?;
+                    received_batches.push(batch);
+                }
+            } else {
+                return Err(Status::failed_precondition("Received data before schema"));
+            }
+        }
+
+        // TODO
+        // Combine all the received RecordBatches into a single one
+        let result_stream = futures::stream::once(async { Ok(PutResult::default()) });
+        Ok(Response::new(Box::pin(result_stream)))
     }
 
     async fn handshake(
