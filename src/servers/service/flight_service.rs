@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 pub struct LogFlightServer {
-    pub data: Arc<Mutex<HashMap<String, RecordBatch>>>,
+    pub data: Arc<Mutex<HashMap<String, Vec<RecordBatch>>>>,
     pub broadcast_actor: Arc<Addr<Broadcaster>>,
 }
 
@@ -99,20 +99,8 @@ impl FlightService for LogFlightServer {
         if !received_batches.is_empty() {
             let mut data = self.data.lock().await;
 
-            let combined_batch = if let Some(old_batch) = data.get(name.as_ref().unwrap()) {
-                let all_columns = old_batch
-                    .columns()
-                    .iter()
-                    .zip(received_batches[0].columns()) // assuming the schema is not changing mid-stream
-                    .map(|(old, new_batch)| {
-                        arrow::compute::concat(&[old.as_ref(), new_batch.as_ref()]).unwrap()
-                    })
-                    .collect::<Vec<_>>();
-                RecordBatch::try_new(old_batch.schema().clone(), all_columns).unwrap()
-            } else {
-                received_batches[0].clone()
-            };
-            data.insert(name.unwrap().clone(), combined_batch);
+            let entry = data.entry(name.unwrap().clone()).or_insert_with(Vec::new);
+            entry.extend(received_batches);
         }
 
         let result_stream = futures::stream::once(async { Ok(PutResult::default()) });
