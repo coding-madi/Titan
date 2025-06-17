@@ -45,6 +45,7 @@ impl FlightService for LogFlightServer {
         let mut descriptor_opt: Option<arrow_flight::FlightDescriptor> = None;
         let mut schema_opt: Option<Arc<Schema>> = None;
         let mut received_batches: Vec<RecordBatch> = Vec::new();
+        let mut name: Option<String> = Option::None;
 
         while let Some(flight_data_res) = flight_data_stream.next().await {
             let flight_data = flight_data_res?; // Automatically handles errors
@@ -52,8 +53,17 @@ impl FlightService for LogFlightServer {
             // First message may contain descriptor
             if descriptor_opt.is_none() {
                 if let Some(descriptor) = flight_data.flight_descriptor.clone() {
-                    descriptor_opt = Some(descriptor);
+                    descriptor_opt = Some(descriptor.clone());
                     info!("Received flight descriptor: {:?}", descriptor_opt);
+                    name = Option::Some(
+                        descriptor
+                            .path
+                            .get(0)
+                            .ok_or_else(|| {
+                                Status::invalid_argument("Flight descriptor path is empty")
+                            })?
+                            .to_string(),
+                    );
                 }
             }
 
@@ -86,6 +96,25 @@ impl FlightService for LogFlightServer {
 
         // TODO
         // Combine all the received RecordBatches into a single one
+        if !received_batches.is_empty() {
+            let mut data = self.data.lock().await;
+
+            let combined_batch = if let Some(old_batch) = data.get(name.as_ref().unwrap()) {
+                let all_columns = old_batch
+                    .columns()
+                    .iter()
+                    .zip(received_batches[0].columns()) // assuming the schema is not changing mid-stream
+                    .map(|(old, new_batch)| {
+                        arrow::compute::concat(&[old.as_ref(), new_batch.as_ref()]).unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                RecordBatch::try_new(old_batch.schema().clone(), all_columns).unwrap()
+            } else {
+                received_batches[0].clone()
+            };
+            data.insert(name.unwrap().clone(), combined_batch);
+        }
+
         let result_stream = futures::stream::once(async { Ok(PutResult::default()) });
         Ok(Response::new(Box::pin(result_stream)))
     }
