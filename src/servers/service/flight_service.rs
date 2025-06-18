@@ -1,14 +1,19 @@
 use crate::actors::broadcast::Broadcaster;
 use actix::{Addr, dev::Stream};
+use actix_web::web::Bytes;
 use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
+use arrow_flight::SchemaAsIpc;
 use arrow_flight::utils::flight_data_to_arrow_batch;
 use arrow_flight::{
     Action, ActionType, Criteria, Empty, FlightData, FlightDescriptor, FlightInfo,
     HandshakeRequest, HandshakeResponse, PollInfo, PutResult, SchemaResult, Ticket,
     flight_service_server::FlightService,
 };
+use arrow_ipc::writer::{DictionaryTracker, IpcDataGenerator, IpcWriteOptions};
+use futures::stream;
 use futures_util::StreamExt;
+use std::vec;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status, Streaming};
@@ -118,8 +123,74 @@ impl FlightService for LogFlightServer {
         &self,
         _request: Request<Criteria>,
     ) -> Result<Response<Self::ListFlightsStream>, Status> {
-        unimplemented!()
+        let data = self.data.lock().await;
+
+        let ipc_options = IpcWriteOptions::default();
+
+        let flight_infos: Vec<Option<FlightInfo>> = data
+            .iter()
+            .map(|(table_name, batches)| {
+                let schema = batches
+                    .first()
+                    .map_or_else(
+                        || {
+                            Err(Status::not_found(format!(
+                                "No data found for {}",
+                                &table_name
+                            )))
+                        },
+                        |batch| Ok(batch.schema().clone()),
+                    )
+                    .unwrap();
+
+                let schema_ipc = SchemaAsIpc::new(schema.as_ref(), &ipc_options);
+
+                let schema_result = SchemaResult::try_from(schema_ipc)
+                    .map_err(|e| Status::internal(format!("Failed to convert schema: {}", e)))
+                    .unwrap();
+
+                let descriptor = FlightDescriptor::new_path(vec![table_name.clone()]);
+
+                let ticket = Ticket {
+                    ticket: Bytes::from(table_name.clone()),
+                };
+
+                let endpoint = arrow_flight::FlightEndpoint {
+                    ticket: Some(ticket),
+                    location: vec![],
+                    expiration_time: None,
+                    app_metadata: Bytes::new(),
+                };
+
+                let total_records: i64 = batches
+                    .iter()
+                    .map(|batch| batch.num_rows() as i64) // Cast each usize to i64
+                    .sum(); // Now sums an iterator of i64
+
+                let total_bytes: i64 = -1;
+
+                let flight_info = FlightInfo {
+                    flight_descriptor: Some(descriptor),
+                    schema: schema_result.schema,
+                    total_records: total_records,
+                    total_bytes: total_bytes,
+                    endpoint: vec![],
+                    app_metadata: Bytes::new(),
+                    ordered: false,
+                };
+
+                Some(flight_info)
+            })
+            .collect();
+
+        let output_stream = futures::stream::iter(
+            flight_infos
+                .into_iter()
+                .map(|info| info.ok_or_else(|| Status::not_found("No flight info found"))),
+        );
+        Ok(Response::new(Box::pin(output_stream)))
     }
+
     async fn get_flight_info(
         &self,
         _request: Request<FlightDescriptor>,
@@ -142,8 +213,60 @@ impl FlightService for LogFlightServer {
         &self,
         _request: Request<Ticket>,
     ) -> Result<Response<Self::DoGetStream>, Status> {
-        unimplemented!()
+        let ticket = _request.into_inner();
+        let data = self.data.lock().await;
+        let table_name = String::from_utf8(ticket.ticket.to_vec())
+            .map_err(|_| Status::invalid_argument("Invalid ticket encoding"))?;
+        let batches = match data.get(&table_name) {
+            Some(b) => b.clone(),
+            None => {
+                return Err(Status::not_found(format!(
+                    "No data found for table '{}'",
+                    table_name
+                )));
+            }
+        };
+
+        if batches.is_empty() {
+            return Err(Status::not_found(format!(
+                "No record batches for '{}'",
+                table_name
+            )));
+        }
+
+        let schema = batches[0].schema();
+        let ipc_write_options = IpcWriteOptions::default();
+        let generator = IpcDataGenerator::default();
+
+        let schema_flight_data: FlightData = generator
+            .schema_to_bytes_with_dictionary_tracker(
+                schema.as_ref(),
+                &mut DictionaryTracker::new(false),
+                &ipc_write_options,
+            )
+            .into();
+        let mut all_flight_data: Vec<Result<FlightData, Status>> = vec![Ok(schema_flight_data)];
+
+        for batch in batches {
+            let (dicts, batch_data) = generator
+                .encoded_batch(
+                    &batch,
+                    &mut DictionaryTracker::new(false),
+                    &ipc_write_options,
+                )
+                .map_err(|e| Status::internal(format!("Failed to encode batch: {e}")))?;
+
+            for d in dicts {
+                all_flight_data.push(Ok(d.into()));
+            }
+
+            all_flight_data.push(Ok(batch_data.into()));
+        }
+
+        let output_stream = stream::iter(all_flight_data);
+        Ok(Response::new(Box::pin(output_stream) as Self::DoGetStream))
     }
+
     async fn do_exchange(
         &self,
         _request: Request<Streaming<FlightData>>,
