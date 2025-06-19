@@ -42,6 +42,7 @@ impl FlightService for LogFlightServer {
     type DoGetStream = Pin<Box<dyn Stream<Item = Result<FlightData, Status>> + Send>>;
     type ListActionsStream = Pin<Box<dyn Stream<Item = Result<ActionType, Status>> + Send>>;
 
+    // Send data to broacast actor
     async fn do_put(
         &self,
         request: Request<Streaming<FlightData>>,
