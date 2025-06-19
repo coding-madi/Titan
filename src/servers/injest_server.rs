@@ -58,12 +58,12 @@ impl Server for InjestServer {
 
             let broadcast_actor = Broadcaster::new(2).start();
             let log_flight_server = LogFlightServer::new(Arc::new(broadcast_actor));
-            
-    let server = tonic::transport::Server::builder()
-                    .max_concurrent_streams(128) // Optional
-                    .accept_http1(false)
-                    .add_service(FlightServiceServer::new(log_flight_server))
-                    .serve_with_shutdown(addr, Self::shutdown_handler(shutdown_rx));
+
+            let server = tonic::transport::Server::builder()
+                .max_concurrent_streams(128) // Optional
+                .accept_http1(false)
+                .add_service(FlightServiceServer::new(log_flight_server))
+                .serve_with_shutdown(addr, Self::shutdown_handler(shutdown_rx));
             // --- NEW: Spawn a task to listen for Ctrl+C ---
             tokio::spawn(async move {
                 signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
