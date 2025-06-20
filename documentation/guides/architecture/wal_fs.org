@@ -1,0 +1,35 @@
+┌────────────────────────────┐
+│       WALBlock Header      │  (fixed 64 bytes, aligned)
+├────────────────────────────┤
+│ MAGIC           [8 bytes]  │  → e.g. "WALBLOCK"
+│ VERSION         [1 byte]   │  → WAL format version
+│ FLAGS           [1 byte]   │  → compression, encryption, etc.
+│ RESERVED        [6 bytes]  │  → padding / future use
+│ METADATA_OFFSET [8 bytes]  │  → relative offset from block start
+│ METADATA_LENGTH [2 bytes]  │  → size of metadata in bytes
+│ RESERVED2       [2 bytes]  │  → padding
+│ CHECKSUM        [4 bytes]  │  → CRC32 or xxHash
+│ RESERVE_OFFSET  [8 bytes]  │  → offset of reserve section
+│ RESERVE_LENGTH  [8 bytes]  │  → length of reserve section
+└────────────────────────────┘
+
+          ▼
+
+┌────────────────────────────┐
+│        Metadata Bytes       │  → FlatBuf or Raw JSON etc.
+│        [variable size]      │
+└────────────────────────────┘
+
+          ▼
+
+┌────────────────────────────┐
+│        Reserved Bytes       │  → alignment, padding, etc.
+│        [variable size]      │
+└────────────────────────────┘
+
+          ▼
+
+┌────────────────────────────┐
+│     Arrow RecordBatch IPC   │  → Serialized RecordBatch
+│        [variable size]      │
+└────────────────────────────┘
