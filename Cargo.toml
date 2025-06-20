@@ -27,6 +27,12 @@ arrow = {version = "=53.2.0"}
 arrow-array = "=53.2.0"
 arrow-flight = "=53.2.0"
 arrow-ipc = "=53.2.0"
+arrow-schema = "=53.2.0"
 chrono = "=0.4.38"
 futures-util = "0.3.31"
 futures = "0.3.31"
+flatbuffers = "25.2.10"
+tempfile = "3.20.0"
+crc32fast = "1.4.2"
+bytemuck = "1.14"
+

@@ -1,5 +1,5 @@
 use crate::actors::parsing::{Key, ParsingActor};
-use crate::actors::wal::WalEntry;
+use crate::actors::wal_writter::WalEntry;
 use actix::Handler;
 use actix::{Actor, Addr, Context, Message};
 use arrow_array::RecordBatch;

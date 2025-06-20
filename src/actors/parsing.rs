@@ -5,7 +5,7 @@ use arrow::datatypes::Schema;
 
 use crate::actors::{
     broadcast::{RecordBatchWrapper, RegexRule},
-    wal::WalEntry,
+    wal_writter::WalEntry,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
