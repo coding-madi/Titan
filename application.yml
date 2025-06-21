@@ -1,0 +1,10 @@
+database:
+  host: localhost
+  port: 5555
+  username: admin
+  password: welcome1
+  database_name: test
+flight:
+  address: "127.0.0.1:50051"
+
+server: INJEST
