@@ -1,19 +1,100 @@
-use arrow_array::RecordBatch;
+use crate::actors::broadcast::RecordBatchWrapper;
+use crate::utils::cksum;
+use crate::wal::layout::WalBlockHeader;
 use arrow_ipc::writer::StreamWriter;
 use bytemuck::bytes_of;
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::sync::Arc;
+use tokio::fs::OpenOptions;
+use tokio::io::SeekFrom;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
-use crate::utils::cksum;
-use crate::wal::layout::WalBlockHeader;
+// Pre-allocate a file to a specific size
+pub async fn pre_allocate_file(file_path: &str, size: u64) -> std::io::Result<()> {
+    let file = File::create(file_path)?;
+    file.set_len(size)?;
+    Ok(())
+}
+
+pub async fn write_wal_block_async(
+    path: &str,
+    offset: u64,
+    record_batch_wrapper: Arc<RecordBatchWrapper>,
+    metadata: &[u8; 48],
+) -> std::io::Result<()> {
+    // Serialize Arrow RecordBatch in a blocking task
+    let (data_buf, _schema) = tokio::task::spawn_blocking({
+        let wrapper = Arc::clone(&record_batch_wrapper);
+        move || {
+            let record_batch = wrapper.data.get(0).ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "RecordBatchWrapper does not contain any RecordBatch",
+                )
+            })?;
+
+            let mut data_buf = Vec::new();
+            let mut arrow_writer =
+                StreamWriter::try_new(&mut data_buf, &record_batch.schema()).unwrap();
+            arrow_writer.write(record_batch).unwrap();
+            arrow_writer.finish().unwrap();
+            Ok::<_, std::io::Error>((data_buf, record_batch.schema()))
+        }
+    })
+    .await
+    .unwrap()?; // unwrap join error, ? on result
+
+    let metadata_offset = 48;
+    let metadata_length = metadata.len() as u16;
+
+    let reserve_offset = metadata_offset + metadata.len();
+    let reserve_length = 0;
+
+    let checksum = cksum::compute_checksum(metadata, &data_buf);
+
+    // --- CRITICAL CHANGE HERE: Open a new file handle for this specific write ---
+    let mut file = OpenOptions::new()
+        .write(true)
+        .open(&*path) // Deref Arc<String> to &str
+        .await?;
+
+    let header = WalBlockHeader {
+        magic: *b"WALBLOCK",
+        metadata_offset: metadata_offset as u64,
+        metadata_length,
+        reserved: 0,
+        checksum,
+        reserve_offset: reserve_offset as u64,
+        reserve_length: reserve_length as u64,
+        total_block_size: (std::mem::size_of::<WalBlockHeader>()
+            + metadata.len()
+            + data_buf.len()) as u64,
+    };
+
+    file.seek(SeekFrom::Start(offset)).await?;
+    // Write to file in async context
+    let header_bytes = bytes_of(&header);
+    file.write_all(header_bytes).await?;
+    file.write_all(metadata).await?;
+    file.write_all(&data_buf).await?;
+    file.flush().await?;
+    Ok(())
+}
 
 pub fn write_wal_block(
     writer: &mut BufWriter<File>,
-    record_batch: &RecordBatch,
-    metadata: &[u8],
+    record_batch_wrapper: &RecordBatchWrapper,
+    metadata: &[u8; 48],
 ) -> std::io::Result<()> {
     // Serialize Arrow RecordBatch into buffer
     let mut data_buf = Vec::new();
+    let record_batch = record_batch_wrapper.data.get(0).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "RecordBatchWrapper does not contain any RecordBatch",
+        )
+    })?;
     {
         let mut arrow_writer =
             StreamWriter::try_new(&mut data_buf, &record_batch.schema()).unwrap();
@@ -21,7 +102,7 @@ pub fn write_wal_block(
         arrow_writer.finish().unwrap();
     }
 
-    let metadata_offset = 64; // right after header
+    let metadata_offset = 48; // right after header
     let metadata_length = metadata.len() as u16;
 
     let reserve_offset = metadata_offset + metadata.len();
@@ -38,6 +119,9 @@ pub fn write_wal_block(
         checksum,
         reserve_offset: reserve_offset as u64,
         reserve_length: reserve_length as u64,
+        total_block_size: (std::mem::size_of::<WalBlockHeader>()
+            + metadata.len()
+            + data_buf.len()) as u64,
     };
 
     // Write header

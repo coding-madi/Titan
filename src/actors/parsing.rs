@@ -68,8 +68,6 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
     fn handle(&mut self, _msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
         // Here we would typically apply the regex to the data in the RecordBatchWrapper
         // For now, we just print the message
-        println!("Received RecordBatchWrapper");
-
         // Simulate processing the record batch with the regex
         // This is where you would apply the regex to the data
 

@@ -9,7 +9,7 @@ pub enum MetadataData<'a> {
     Unknown(Vec<u8>), // Forward-compatible blob
 }
 
-#[repr(C, align(32))]
+#[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
 pub struct WalBlockHeader {
     pub magic: [u8; 8],       // 8 bytes
@@ -19,7 +19,7 @@ pub struct WalBlockHeader {
     pub checksum: u32,        // 4 bytes
     pub reserve_offset: u64,  // 8 bytes
     pub reserve_length: u64,  // 8 bytes
-                              // total: 40 bytes → padded to 64 for SIMD
+    pub total_block_size: u64,                         // total: 40 bytes → padded to 64 for SIMD
 }
 
 // Required by bytemuck

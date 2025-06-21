@@ -79,11 +79,6 @@ impl Handler<RecordBatchWrapper> for Broadcaster {
     type Result = ();
 
     fn handle(&mut self, msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
-        println!(
-            "Broadcaster received RecordBatchWrapper for key: {}",
-            msg.key
-        );
-
         if self.regex_handlers.is_empty() {
             eprintln!("No regex handlers available to distribute RecordBatchWrapper.");
             return;

@@ -13,7 +13,7 @@ use tracing::info;
 async fn main() -> std::io::Result<()> {
     // TODO: implement log rotation
     let file_writer = FileWriter::new("rs_cd.log");
-    let subscriber = get_subscribers("poros", "INFO", file_writer);
+    let subscriber = get_subscribers("poros", "WARN", file_writer);
     init_subscriber(subscriber);
 
     let config = read_configuration();

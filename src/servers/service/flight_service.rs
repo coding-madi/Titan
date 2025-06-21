@@ -1,4 +1,4 @@
-use crate::actors::broadcast::Broadcaster;
+use crate::actors::broadcast::{Broadcaster, RecordBatchWrapper};
 use actix::{Addr, dev::Stream};
 use actix_web::web::Bytes;
 use arrow::datatypes::Schema;
@@ -50,7 +50,7 @@ impl FlightService for LogFlightServer {
         let mut flight_data_stream = request.into_inner();
         let mut descriptor_opt: Option<arrow_flight::FlightDescriptor> = None;
         let mut schema_opt: Option<Arc<Schema>> = None;
-        let mut received_batches: Vec<RecordBatch> = Vec::new();
+        let received_batches: Vec<RecordBatch> = Vec::new();
         let mut name: Option<String> = Option::None;
 
         while let Some(flight_data_res) = flight_data_stream.next().await {
@@ -93,7 +93,13 @@ impl FlightService for LogFlightServer {
                     .map_err(|e| {
                         Status::internal(format!("Failed to convert to RecordBatch: {}", e))
                     })?;
-                    received_batches.push(batch);
+
+                    let batch_wrapped = RecordBatchWrapper {
+                        key: name.clone().unwrap_or_default(),
+                        data: Arc::new(vec![batch.clone()]),
+                    };
+                    // received_batches.push(batch);
+                    let _ = self.broadcast_actor.send(batch_wrapped).await;
                 }
             } else {
                 return Err(Status::failed_precondition("Received data before schema"));
@@ -103,10 +109,10 @@ impl FlightService for LogFlightServer {
         // TODO
         // Combine all the received RecordBatches into a single one
         if !received_batches.is_empty() {
-            let mut data = self.data.lock().await;
+            let data = self.data.lock().await;
 
-            let entry = data.entry(name.unwrap().clone()).or_insert_with(Vec::new);
-            entry.extend(received_batches);
+            // let entry = data.entry(name.unwrap().clone()).or_insert_with(Vec::new);
+            // entry.extend(received_batches);
         }
 
         let result_stream = futures::stream::once(async { Ok(PutResult::default()) });
