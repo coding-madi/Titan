@@ -67,9 +67,8 @@ pub async fn write_wal_block_async(
         checksum,
         reserve_offset: reserve_offset as u64,
         reserve_length: reserve_length as u64,
-        total_block_size: (std::mem::size_of::<WalBlockHeader>()
-            + metadata.len()
-            + data_buf.len()) as u64,
+        total_block_size: (std::mem::size_of::<WalBlockHeader>() + metadata.len() + data_buf.len())
+            as u64,
     };
 
     file.seek(SeekFrom::Start(offset)).await?;
@@ -119,9 +118,8 @@ pub fn write_wal_block(
         checksum,
         reserve_offset: reserve_offset as u64,
         reserve_length: reserve_length as u64,
-        total_block_size: (std::mem::size_of::<WalBlockHeader>()
-            + metadata.len()
-            + data_buf.len()) as u64,
+        total_block_size: (std::mem::size_of::<WalBlockHeader>() + metadata.len() + data_buf.len())
+            as u64,
     };
 
     // Write header
@@ -169,7 +167,7 @@ mod tests {
             .expect("Failed to create RecordBatch");
 
         // Step 3: Metadata as raw bytes (could be FlatBuf later)
-        let metadata = b"{\"wal\": \"test-block\"}";
+        let metadata: &'static [u8; 48] = b"{\"wal\": \"test-block this is awesome. This is c\"}";
 
         // Step 4: Write WAL block
         write_wal_block(&mut writer, &batch, metadata)?;

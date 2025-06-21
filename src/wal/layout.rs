@@ -12,14 +12,14 @@ pub enum MetadataData<'a> {
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
 pub struct WalBlockHeader {
-    pub magic: [u8; 8],       // 8 bytes
-    pub metadata_offset: u64, // 8 bytes
-    pub metadata_length: u16, // 2 bytes
-    pub reserved: u16,        // 2 bytes (padding)
-    pub checksum: u32,        // 4 bytes
-    pub reserve_offset: u64,  // 8 bytes
-    pub reserve_length: u64,  // 8 bytes
-    pub total_block_size: u64,                         // total: 40 bytes → padded to 64 for SIMD
+    pub magic: [u8; 8],        // 8 bytes
+    pub metadata_offset: u64,  // 8 bytes
+    pub metadata_length: u16,  // 2 bytes
+    pub reserved: u16,         // 2 bytes (padding)
+    pub checksum: u32,         // 4 bytes
+    pub reserve_offset: u64,   // 8 bytes
+    pub reserve_length: u64,   // 8 bytes
+    pub total_block_size: u64, // total: 40 bytes → padded to 64 for SIMD
 }
 
 // Required by bytemuck
