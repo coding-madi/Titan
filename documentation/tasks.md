@@ -1,290 +1,193 @@
 
 # Table of Contents
 
-1.  [TASKS LIST](#org9754111)
-    1.  [Understand the OTEL contract for logs](#org431e818):SPIKE:
-    2.  [Check how protobuf formats are translated into arrow columns](#org26a8cb4)
-    3.  [Create a `build.rs` script with protobuf compilation and generations.](#org7aa2cd9)
-    4.  [Unit test cases of configurations](#org0a566a4):KUBER:
-    5.  [Create implementations of the Actix app server](#org555460a)
-    6.  [Injest server implementation](#orge4f7ad7)
-        1.  [Create a tonic server](#orgead04a1)
-        2.  [Create a flight server](#org8a22645)
-    7.  [Query server implementation](#org184957a)
-        1.  [Create a health endpoint](#org298b92d)
-        2.  [Create an add regex endpoint](#orge005f91)
-    8.  [Datafusion based SQL server](#org3700883)
-    9.  [datafusion-flight-sql-server](#orgf02e02f)
-    10. [Flientbit agent](#org1375d0c)
-        1.  [Create a golang plugin](#orga00582f)
-    11. [Create ebpf example in aya for XDP packet filtering](#org680e7d6)
-    12. [Add support for maps to filter data](#orgb42f525)
-    13. [Add support for actix web application.](#orgf9a1ec4)
-    14. [Create a CI pipeline and build script](#orgc6b7e02)
-    15. [Create a build.rs script for protobuf generations](#org2eaff83)
-    16. [Create a actions script for building pipeline.](#org038d7ac)
-    17. [Create a make script](#org9e40ec9)
-    18. [Create a script for packaging into different distributions.](#org33bae24)
-    19. [Actor models](#org63eede8)
-    20. [Actor for managing regex patterns](#org464abc8)
-    21. [Actor for parsing json and converting into arrow](#orgd0bf425)
-        1.  [Explore **RAYON** for parallelism, we need not use actors because json parsing does not hold state.](#org0a7c1c8)
-    22. [Actor for sequential writing of data](#org88a0bea)
-    23. [Actor for caching the parsed arrow buffers](#org53adba7)
-    24. [](#orgb3910db)
-    25. [Datafusion](#org20640e4)
-    26. [Query the data using datafusion.](#orge9dfb82)
-    27. [Try to see of the query can be called from external clients.](#org783e360)
-    28. [Check if SQLAlchemy can be made to work with the Datafusion.](#orga7c5b23)
-    29. [Create a custom table component in Apache superset](#org1120392):REACT:UI:
-    30. [Explore web assembly for own UI](#org3a793b7)
-    31. [AI based analysis](#org3f6aa48)
-    32. [Self healing](#org9617094):POC:
-    33. [Edge analysis](#org21380fb)
-    34. [Analyse the gather already gathered and get some](#org654cf2d)
-    35. [](#org74a3ed4)
-2.  [Decisions](#orgef3dfec)
-    1.  [WAL file system](#org02a31ed)
-    2.  [Design](#org94bdc2d)
-    3.  [Challenges](#org8c136e0)
-        1.  [Atomic offset calculations](#orgf74e1e2)
-        2.  [Multi-log files / dividing log files into chunks.](#orgd43ab5a)
-    4.  [Considerations](#orged2be23)
+1.  [TASKS LIST](#orgd9c9da9)
+    1.  [Understand the OTEL contract for logs](#org200fcf7):SPIKE:KUBER:
+    2.  [Unit test cases of configurations](#org78fd920):KUBER:
+    3.  [CI setup](#orgee2eb3c):BALAJI:
+    4.  [Create implementations of the Actix app server](#orgaf90d8a):KUBER:BALAJI:DISCUSS:
+    5.  [Injest server implementation](#orgcfa5681)
+    6.  [Query server implementation](#orgfe907a0)
+    7.  [Scripts and utils (python preferred)](#orgb6e957c):BALAJI:
+    8.  [Flientbit agent](#org3986431)
+        1.  [Create a golang plugin](#orgfb6c266)
+    9.  [EBPF](#orgb55c3d5)
+    10. [Add support for maps to filter data](#orgc7948eb)
+    11. [Datafusion based SQL server](#org577884d)
+    12. [Actor models](#orgebfc72a)
+    13. [Try to see of the query can be called from external clients.](#org3b80bc3)
+    14. [Check if SQLAlchemy can be made to work with the Datafusion.](#org92e3954)
+    15. [Create a custom table component in Apache superset](#orgf77e401):REACT:UI:
+    16. [Explore web assembly for own UI](#org9f2abfa)
+    17. [Self healing](#org853bbeb):POC:
+    18. [AI analysis](#org6e75569)
+2.  [Decisions](#org354bdfc)
+    1.  [WAL file system](#orge142274)
+    2.  [Design](#orgee81fb4)
+    3.  [Challenges](#org3efa395)
+        1.  [Atomic offset calculations](#org399df8a)
+        2.  [Multi-log files / dividing log files into chunks.](#org9604ffd)
+    4.  [Considerations](#orga06d9d7)
 
 
 
-<a id="org9754111"></a>
+<a id="orgd9c9da9"></a>
 
 # TASKS LIST
 
 
-<a id="org431e818"></a>
+<a id="org200fcf7"></a>
 
-## TODO Understand the OTEL contract for logs     :SPIKE:
+## TODO Understand the OTEL contract for logs     :SPIKE:KUBER:
 
 We should strive to reuse these formats, we need interoperability and creating our own agents would prove too costly.
 
-
-<a id="org26a8cb4"></a>
-
-## TODO Check how protobuf formats are translated into arrow columns
+-   [ ] Check how protobuf formats are translated into arrow columns
 
 
-<a id="org7aa2cd9"></a>
-
-## TODO Create a `build.rs` script with protobuf compilation and generations.
-
-
-<a id="org0a566a4"></a>
+<a id="org78fd920"></a>
 
 ## TODO Unit test cases of configurations     :KUBER:
 
-
-<a id="org555460a"></a>
-
-## TODO Create implementations of the Actix app server
-
-
-<a id="orge4f7ad7"></a>
-
-## TODO Injest server implementation
+-   [ ] Unit tests for Flight server
+-   [ ] Unit test for broadcast actor
+-   [ ] Unit test for parsing actor
+-   [ ] Unit test for WAL actor
+-   [ ] IT test for WAL writer. Tests for validating the headers on a temporary file.
+-   [ ] 
 
 
-<a id="orgead04a1"></a>
+<a id="orgee2eb3c"></a>
 
-### TODO Create a tonic server
+## TODO CI setup     :BALAJI:
 
-
-<a id="org8a22645"></a>
-
-### TODO Create a flight server
+-   [ ] Create a CI script in rust for compiling the Flatbufs and Protobufs if any.
+-   [ ] Create a make script
 
 
-<a id="org184957a"></a>
+<a id="orgaf90d8a"></a>
+
+## TODO Create implementations of the Actix app server     :KUBER:BALAJI:DISCUSS:
+
+-   [ ] Discuss contracts for REST
+-   [ ] Discuss contracts for Websockets
+-   [ ] Discuss contracts for flights
+
+
+<a id="orgcfa5681"></a>
+
+## DONE Injest server implementation
+
+-   [X] Create a tonic server
+-   [X] Create a flight server
+
+
+<a id="orgfe907a0"></a>
 
 ## TODO Query server implementation
 
-
-<a id="org298b92d"></a>
-
-### TODO Create a health endpoint
+-   [ ] Create a health endpoint
+-   [ ] Create an add regex endpoint
 
 
-<a id="orge005f91"></a>
+<a id="orgb6e957c"></a>
 
-### TODO Create an add regex endpoint
+## TODO Scripts and utils (python preferred)     :BALAJI:
 
-
-<a id="org3700883"></a>
-
-## TODO Datafusion based SQL server
+-   [X] Script for performance testing of flight server
+-   [X] Script for validation of blocks
 
 
-<a id="orgf02e02f"></a>
-
-## TODO datafusion-flight-sql-server
-
-
-<a id="org1375d0c"></a>
+<a id="org3986431"></a>
 
 ## TODO Flientbit agent
 
 
-<a id="orga00582f"></a>
+<a id="orgfb6c266"></a>
 
 ### TODO Create a golang plugin
 
 It should create arrow flight batches and ship it over grpc to collector
 
-1.  TODO Create a skeleton plugin
-
-2.  TODO Read and print the data
-
-3.  TODO Create a contract for http, grpc traffic.
-
-4.  TODO Create proxy interceptors in the contract.
-
-5.  TODO Create a batching function
-
-6.  TODO Side channel metadata - correlation - IP address, host id etc.
+-   [ ] [#A] Create a skeleton plugin
+-   [ ] [#A] Read and print the data
+-   [ ] Create a contract for http, grpc traffic.
+-   [ ] Create proxy interceptors in the contract.
+-   [ ] Create a batching function
+-   [ ] Side channel metadata - correlation - IP address, host id etc.
 
 
-<a id="org680e7d6"></a>
+<a id="orgb55c3d5"></a>
 
-## TODO Create ebpf example in aya for XDP packet filtering
+## TODO EBPF
+
+-   [ ] Self monitoring
+-   [ ] Metering of injest
+-   [ ] Blocking IPs using XDP
 
 
-<a id="orgb42f525"></a>
+<a id="orgc7948eb"></a>
 
 ## TODO Add support for maps to filter data
 
 
-<a id="orgf9a1ec4"></a>
+<a id="org577884d"></a>
 
-## TODO Add support for actix web application.
-
-
-<a id="orgc6b7e02"></a>
-
-## TODO Create a CI pipeline and build script
+## TODO Datafusion based SQL server
 
 
-<a id="org2eaff83"></a>
-
-## TODO Create a build.rs script for protobuf generations
-
-
-<a id="org038d7ac"></a>
-
-## TODO Create a actions script for building pipeline.
-
-
-<a id="org9e40ec9"></a>
-
-## TODO Create a make script
-
-
-<a id="org33bae24"></a>
-
-## TODO Create a script for packaging into different distributions.
-
-
-<a id="org63eede8"></a>
+<a id="orgebfc72a"></a>
 
 ## TODO Actor models
 
-
-<a id="org464abc8"></a>
-
-## TODO Actor for managing regex patterns
-
-
-<a id="orgd0bf425"></a>
-
-## TODO Actor for parsing json and converting into arrow
+-   [ ] Actor for managing regex patterns
+-   [ ] Actor for parsing json and converting into arrow
+-   [ ] Explore **RAYON** for parallelism, we need not use actors because json parsing does not hold state.Actor for sequential writing of data
+-   [ ] Actor for caching the parsed arrow buffers
 
 
-<a id="org0a7c1c8"></a>
-
-### TODO Explore **RAYON** for parallelism, we need not use actors because json parsing does not hold state.
-
-
-<a id="org88a0bea"></a>
-
-## TODO Actor for sequential writing of data
-
-
-<a id="org53adba7"></a>
-
-## TODO Actor for caching the parsed arrow buffers
-
-
-<a id="orgb3910db"></a>
-
-## TODO 
-
-
-<a id="org20640e4"></a>
-
-## TODO Datafusion
-
-
-<a id="orge9dfb82"></a>
-
-## TODO Query the data using datafusion.
-
-
-<a id="org783e360"></a>
+<a id="org3b80bc3"></a>
 
 ## TODO Try to see of the query can be called from external clients.
 
 
-<a id="orga7c5b23"></a>
+<a id="org92e3954"></a>
 
 ## TODO Check if SQLAlchemy can be made to work with the Datafusion.
 
 
-<a id="org1120392"></a>
+<a id="orgf77e401"></a>
 
 ## TODO Create a custom table component in Apache superset     :REACT:UI:
 
 
-<a id="org3a793b7"></a>
+<a id="org9f2abfa"></a>
 
 ## TODO Explore web assembly for own UI
 
 
-<a id="org3f6aa48"></a>
-
-## TODO AI based analysis
-
-
-<a id="org9617094"></a>
+<a id="org853bbeb"></a>
 
 ## TODO Self healing     :POC:
 
 
-<a id="org21380fb"></a>
+<a id="org6e75569"></a>
 
-## TODO Edge analysis
+## TODO AI analysis
 
-
-<a id="org654cf2d"></a>
-
-## TODO Analyse the gather already gathered and get some
-
-
-<a id="org74a3ed4"></a>
-
-## TODO 
+-   [ ] POC on ONXX for transfering of ML models over wire
+-   [ ] POC for auto-encoders for anomaly detection.
+-   [ ] POC for convoluted auto-encoders for anomaly detection.
+-   [ ] ONXX runtimes in different languages.
+-   
 
 
-<a id="orgef3dfec"></a>
+<a id="org354bdfc"></a>
 
 # Decisions
 
 
-<a id="org02a31ed"></a>
+<a id="orge142274"></a>
 
 ## WAL file system
 
@@ -294,7 +197,7 @@ We need a write ahead log based file system for 2 reasons.
 -   Logs must be durable.
 
 
-<a id="org94bdc2d"></a>
+<a id="orgee81fb4"></a>
 
 ## Design
 
@@ -372,7 +275,7 @@ Legend:
 -   \`R\` = reserve length (from header)
 
 
-<a id="org8c136e0"></a>
+<a id="org3efa395"></a>
 
 ## Challenges
 
@@ -380,7 +283,7 @@ Writes can only be sequential, and sequential writes may not be able to fully sa
 For parallelization, there are a few options.
 
 
-<a id="orgf74e1e2"></a>
+<a id="org399df8a"></a>
 
 ### Atomic offset calculations
 
@@ -390,7 +293,7 @@ However, the downside is that to calculate the size of `RecordBuffers` accuratel
 This means we have to create another copy of the data in memory, which may not be very effecient.
 
 
-<a id="orgd43ab5a"></a>
+<a id="org9604ffd"></a>
 
 ### Multi-log files / dividing log files into chunks.
 
@@ -398,17 +301,17 @@ This approach of creating 4 log files of 1 Gb, instead of a single 4 Gb logfile,
 However, this approach may be more complex and needs more dilibrations. Recovery could become pretty complex.
 
 
-<a id="orged2be23"></a>
+<a id="orga06d9d7"></a>
 
 ## Considerations
 
--   [] Need support for vectorized search of block headers. We can recover in parallel and create parquets in parallel using rayon.
--   [] Need a way to parallelize writes.
--   [] Dataloss of a few seconds may be acceptable. (Flushing for every entry in WAL could be expensive, databases flush on commit, we can flush every 2 seconds maybe)
--   [] Check-sum and corruption checks must be done.
--   [] Metadata should be field extractable, and no incur full serialization. (Flatbuf allows for primitive types to be de-serialized without reading entire payload)
--   [] Need some paddings in the WAL buffer for SIMD accelerations.
--   [] Need some padding in the headers for future explansions.
--   [] Need schema evolution options for the Metadata
--   [] Need validation scripts for checking block health and checksums for troubleshootings.
+-   [ ] Need support for vectorized search of block headers. We can recover in parallel and create parquets in parallel using rayon.
+-   [ ] Need a way to parallelize writes.
+-   [ ] Dataloss of a few seconds may be acceptable. (Flushing for every entry in WAL could be expensive, databases flush on commit, we can flush every 2 seconds maybe)
+-   [ ] Check-sum and corruption checks must be done.
+-   [ ] Metadata should be field extractable, and no incur full serialization. (Flatbuf allows for primitive types to be de-serialized without reading entire payload)
+-   [ ] Need some paddings in the WAL buffer for SIMD accelerations.
+-   [ ] Need some padding in the headers for future explansions.
+-   [ ] Need schema evolution options for the Metadata
+-   [ ] Need validation scripts for checking block health and checksums for troubleshootings.
 
