@@ -1,13 +1,13 @@
 #+title: Tasks
-
-* TODO Understand the OTEL contract for logs :SPIKE:
+* TASKS LIST
+** TODO Understand the OTEL contract for logs :SPIKE:
 We should strive to reuse these formats, we need interoperability and creating our own agents would prove too costly.
 ** TODO Check how protobuf formats are translated into arrow columns
 ** TODO Create a =build.rs= script with protobuf compilation and generations.
 
-* TODO [#A] Unit test cases of configurations :KUBER:
+** TODO [#A] Unit test cases of configurations :KUBER:
 
-* TODO [#A] Create implementations of the Actix app server
+** TODO [#A] Create implementations of the Actix app server
 ** TODO Injest server implementation
 *** TODO Create a tonic server
 *** TODO Create a flight server
@@ -15,10 +15,10 @@ We should strive to reuse these formats, we need interoperability and creating o
 *** TODO Create a health endpoint
 *** TODO Create an add regex endpoint
 
-* TODO Datafusion based SQL server
+** TODO Datafusion based SQL server
 ** TODO datafusion-flight-sql-server
 
-* TODO Flientbit agent
+** TODO Flientbit agent
 *** TODO Create a golang plugin
 It should create arrow flight batches and ship it over grpc to collector
 **** TODO [#A] Create a skeleton plugin
@@ -28,17 +28,17 @@ It should create arrow flight batches and ship it over grpc to collector
 **** TODO Create a batching function
 **** TODO Side channel metadata - correlation - IP address, host id etc.
 
-* TODO Create ebpf example in aya for XDP packet filtering
+** TODO Create ebpf example in aya for XDP packet filtering
 ** TODO Add support for maps to filter data
 ** TODO Add support for actix web application.
 
-* TODO Create a CI pipeline and build script
+** TODO Create a CI pipeline and build script
 ** TODO Create a build.rs script for protobuf generations
 ** TODO Create a actions script for building pipeline.
 ** TODO Create a make script
 ** TODO Create a script for packaging into different distributions.
 
-* TODO Actor models
+** TODO Actor models
 ** TODO Actor for managing regex patterns
 ** TODO Actor for parsing json and converting into arrow
 *** TODO Explore *RAYON* for parallelism, we need not use actors because json parsing does not hold state.
@@ -47,17 +47,74 @@ It should create arrow flight batches and ship it over grpc to collector
 ** TODO
 
 
-* TODO Datafusion
+** TODO Datafusion
 ** TODO Query the data using datafusion.
 ** TODO Try to see of the query can be called from external clients.
 ** TODO Check if SQLAlchemy can be made to work with the Datafusion.
 
-* TODO Create a custom table component in Apache superset :REACT:UI:
+** TODO Create a custom table component in Apache superset :REACT:UI:
 
-* TODO Explore web assembly for own UI
+** TODO Explore web assembly for own UI
 
-* TODO AI based analysis
+** TODO AI based analysis
 ** TODO Self healing :POC:
 ** TODO Edge analysis
 ** TODO Analyse the gather already gathered and get some
-* TODO
+** TODO
+
+
+
+* Decisions
+** WAL file system
+We need a write ahead log based file system for 2 reasons.
+- Parquet files need to be created and pushed into iceberg schema. This must be batched to avoid small file problems.
+- Logs must be durable.
+
+** Design
++----------------------+----------------------------+-------------+
+| Offset Range         | Field Name                 | Size (bytes)|
++----------------------+----------------------------+-------------+
+| 0x00 - 0x07          | Magic                      | 8           |
+| 0x08 - 0x0F          | Metadata Offset            | 8           |
+| 0x10 - 0x11          | Metadata Length            | 2           |
+| 0x12 - 0x13          | Reserved (padding)         | 2           |
+| 0x14 - 0x17          | Checksum                   | 4           |
+| 0x18 - 0x1F          | Reserve Offset             | 8           |
+| 0x20 - 0x27          | Reserve Length             | 8           |
+| 0x28 - 0x2F          | Total Block Size           | 8           |
+| 0x30 - 0x3F          | Padding (for 64-byte hdr)  | 16          |
++----------------------+----------------------------+-------------+
+| 0x40 - 0x40+M-1      | Metadata Bytes             | M           |
+| 0x40+M - 0x40+M+D-1  | Arrow IPC Data             | D           |
+| ...                  | Reserved Area (optional)   | R (optional)|
++----------------------+----------------------------+-------------+
+
+Legend:
+- `M` = metadata length (from header)
+- `D` = data length (derived from file size - header - metadata - reserve)
+- `R` = reserve length (from header)
+
+
+** Challenges
+Writes can only be sequential, and sequential writes may not be able to fully saturate the modern SSDs,
+For parallelization, there are a few options.
+*** Atomic offset calculations
+We can calculate the total block required for a buffer and atomically store it. Next I/O request will get this offset and then add it's size
+automically and save it.
+However, the downside is that to calculate the size of =RecordBuffers= accurately, we need to copy the data over to a =vec![]= datastructure.
+This means we have to create another copy of the data in memory, which may not be very effecient.
+
+*** Multi-log files / dividing log files into chunks.
+This approach of creating 4 log files of 1 Gb, instead of a single 4 Gb logfile, could allow the work to parallelize.
+However, this approach may be more complex and needs more dilibrations. Recovery could become pretty complex.
+
+** Considerations
+- [] Need support for vectorized search of block headers. We can recover in parallel and create parquets in parallel using rayon.
+- [] Need a way to parallelize writes.
+- [] Dataloss of a few seconds may be acceptable. (Flushing for every entry in WAL could be expensive, databases flush on commit, we can flush every 2 seconds maybe)
+- [] Check-sum and corruption checks must be done.
+- [] Metadata should be field extractable, and no incur full serialization. (Flatbuf allows for primitive types to be de-serialized without reading entire payload)
+- [] Need some paddings in the WAL buffer for SIMD accelerations.
+- [] Need some padding in the headers for future explansions.
+- [] Need schema evolution options for the Metadata
+- [] Need validation scripts for checking block health and checksums for troubleshootings.
