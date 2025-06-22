@@ -1,15 +1,18 @@
 // Write ahead log entries
 
-use std::{
-    fs::{File, OpenOptions},
-    sync::Arc,
-};
+use std::fs::{File, OpenOptions};
 
 use actix::{Actor, Context, Handler};
 use std::io::BufWriter;
-use tracing::{info, trace};
+use tracing::info;
 
-use crate::{actors::broadcast::RecordBatchWrapper, wal::writer::writer::write_wal_block};
+use crate::{
+    actors::broadcast::RecordBatchWrapper,
+    utils::transformers::{
+        build_flatbufmeta_with_logmeta, serialize_record_batch_full_ipc,
+    },
+    wal::writer::writer::write_wal_block,
+};
 
 pub struct WalEntry {
     pub writer: BufWriter<File>,
@@ -45,17 +48,19 @@ impl Handler<RecordBatchWrapper> for WalEntry {
         record_batch_wrapper: RecordBatchWrapper,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        info!("Received RecordBatchWrapper for WAL entry");
-        trace!("Writing WAL block asynchronously");
-        let numbers_vec: Vec<u8> = (1..=48).collect();
-        let numbers_array: [u8; 48] = numbers_vec
-            .try_into()
-            .expect("Vec has incorrect length for fixed-size array");
-        if let Err(e) = write_wal_block(
-            &mut self.writer,
-            &Arc::new(record_batch_wrapper),
-            &numbers_array,
-        ) {
+        // Convert the RecordBatchWrapper to layout WalBlockHeader
+        //
+        let metadata_bytes = build_flatbufmeta_with_logmeta(&record_batch_wrapper.key);
+
+        info!("Length of metadata = {:?}", &metadata_bytes.len());
+
+        // let data_bytes = serialize_record_batch_without_schema(&record_batch_wrapper);
+
+        let data_bytes = serialize_record_batch_full_ipc(&record_batch_wrapper);
+
+        info!("Length of actual data: {:?}", &data_bytes.len());
+
+        if let Err(e) = write_wal_block(&mut self.writer, &data_bytes, &metadata_bytes) {
             tracing::error!("Failed to write WAL block: {}", e);
         };
         info!("WAL block written successfully");

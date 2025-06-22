@@ -62,7 +62,7 @@ impl Handler<RegexRule> for ParsingActor {
     }
 }
 
-impl Handler<RecordBatchWrapper> for ParsingActor {
+impl<'a> Handler<RecordBatchWrapper> for ParsingActor {
     type Result = ();
 
     fn handle(&mut self, _msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {

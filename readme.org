@@ -32,3 +32,24 @@ rustup component add rustfmt
 #+BEGIN_SRC
 rustup component add clippy
 #+END_SRC
+
+*** Wal block layout
++-------------------------------+
+| WalBlockHeader (64 bytes)      |
++-------------------------------+
+| FlatBuffers Metadata           |
+| (starts at metadata_offset)    |
+|  + FlatbufMeta root            |
+|    + version (1 byte)          |
+|    + flags (1 byte)            |
+|    + timestamp (8 bytes)       |
+|    + serialization (2 bytes)   |
+|    + magic_number (8 bytes)    |
+|    + meta (union)              |
+|      + EventMeta / LogMeta / TraceMeta |
++-------------------------------+
+| Reserved Area (optional)       |
++-------------------------------+
+| Arrow IPC payload (data)       |
+| (starts at data_offset)        |
++-------------------------------+

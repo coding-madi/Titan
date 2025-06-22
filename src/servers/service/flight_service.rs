@@ -1,4 +1,4 @@
-use crate::actors::broadcast::{Broadcaster, RecordBatchWrapper};
+use crate::actors::broadcast::{Broadcaster, Metadata, RecordBatchWrapper};
 use actix::{Addr, dev::Stream};
 use actix_web::web::Bytes;
 use arrow::datatypes::Schema;
@@ -95,8 +95,13 @@ impl FlightService for LogFlightServer {
                     })?;
 
                     let batch_wrapped = RecordBatchWrapper {
-                        key: name.clone().unwrap_or_default(),
-                        data: Arc::new(vec![batch.clone()]),
+                        key: Metadata {
+                            flight: name.clone().unwrap_or_default(),
+                            schema: schema.clone(),
+                            buffer_id: 1,
+                            service_id: name.clone().unwrap_or_default(),
+                        },
+                        data: Arc::new(batch.clone()),
                     };
                     // received_batches.push(batch);
                     let _ = self.broadcast_actor.send(batch_wrapped).await;

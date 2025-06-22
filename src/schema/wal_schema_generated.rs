@@ -22,19 +22,13 @@ pub mod wal {
         since = "2.0.0",
         note = "Use associated constants instead. This will no longer be generated in 2021."
     )]
-    pub const ENUM_MAX_SERIALIZATION: i16 = 4;
+    pub const ENUM_MAX_SERIALIZATION: i16 = 0;
     #[deprecated(
         since = "2.0.0",
         note = "Use associated constants instead. This will no longer be generated in 2021."
     )]
     #[allow(non_camel_case_types)]
-    pub const ENUM_VALUES_SERIALIZATION: [Serialization; 5] = [
-        Serialization::Arrow,
-        Serialization::Flatbuf,
-        Serialization::Avro,
-        Serialization::Json,
-        Serialization::Protobuf,
-    ];
+    pub const ENUM_VALUES_SERIALIZATION: [Serialization; 1] = [Serialization::Arrow];
 
     /// Defines the serialization format used for the primary data payload
     /// associated with a WAL entry (e.g., the Arrow IPC Data).
@@ -45,32 +39,14 @@ pub mod wal {
     impl Serialization {
         /// Apache Arrow IPC (InterProcess Communication) format.
         pub const Arrow: Self = Self(0);
-        /// FlatBuffers binary format.
-        pub const Flatbuf: Self = Self(1);
-        /// Apache Avro binary format.
-        pub const Avro: Self = Self(2);
-        /// JSON text format (less common for WAL, but included for completeness).
-        pub const Json: Self = Self(3);
-        /// Google Protocol Buffers binary format.
-        pub const Protobuf: Self = Self(4);
 
         pub const ENUM_MIN: i16 = 0;
-        pub const ENUM_MAX: i16 = 4;
-        pub const ENUM_VALUES: &'static [Self] = &[
-            Self::Arrow,
-            Self::Flatbuf,
-            Self::Avro,
-            Self::Json,
-            Self::Protobuf,
-        ];
+        pub const ENUM_MAX: i16 = 0;
+        pub const ENUM_VALUES: &'static [Self] = &[Self::Arrow];
         /// Returns the variant's name or "" if unknown.
         pub fn variant_name(self) -> Option<&'static str> {
             match self {
                 Self::Arrow => Some("Arrow"),
-                Self::Flatbuf => Some("Flatbuf"),
-                Self::Avro => Some("Avro"),
-                Self::Json => Some("Json"),
-                Self::Protobuf => Some("Protobuf"),
                 _ => None,
             }
         }
@@ -239,10 +215,131 @@ pub mod wal {
     impl flatbuffers::SimpleToVerifyInSlice for Metadata {}
     pub struct MetadataUnionTableOffset {}
 
+    #[allow(clippy::upper_case_acronyms)]
+    #[non_exhaustive]
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum MetadataT {
+        NONE,
+        EventMeta(Box<EventMetaT>),
+        LogMeta(Box<LogMetaT>),
+        TraceMeta(Box<TraceMetaT>),
+    }
+    impl Default for MetadataT {
+        fn default() -> Self {
+            Self::NONE
+        }
+    }
+    impl MetadataT {
+        pub fn metadata_type(&self) -> Metadata {
+            match self {
+                Self::NONE => Metadata::NONE,
+                Self::EventMeta(_) => Metadata::EventMeta,
+                Self::LogMeta(_) => Metadata::LogMeta,
+                Self::TraceMeta(_) => Metadata::TraceMeta,
+            }
+        }
+        pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+            &self,
+            fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>,
+        ) -> Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>> {
+            match self {
+                Self::NONE => None,
+                Self::EventMeta(v) => Some(v.pack(fbb).as_union_value()),
+                Self::LogMeta(v) => Some(v.pack(fbb).as_union_value()),
+                Self::TraceMeta(v) => Some(v.pack(fbb).as_union_value()),
+            }
+        }
+        /// If the union variant matches, return the owned EventMetaT, setting the union to NONE.
+        pub fn take_event_meta(&mut self) -> Option<Box<EventMetaT>> {
+            if let Self::EventMeta(_) = self {
+                let v = core::mem::replace(self, Self::NONE);
+                if let Self::EventMeta(w) = v {
+                    Some(w)
+                } else {
+                    unreachable!()
+                }
+            } else {
+                None
+            }
+        }
+        /// If the union variant matches, return a reference to the EventMetaT.
+        pub fn as_event_meta(&self) -> Option<&EventMetaT> {
+            if let Self::EventMeta(v) = self {
+                Some(v.as_ref())
+            } else {
+                None
+            }
+        }
+        /// If the union variant matches, return a mutable reference to the EventMetaT.
+        pub fn as_event_meta_mut(&mut self) -> Option<&mut EventMetaT> {
+            if let Self::EventMeta(v) = self {
+                Some(v.as_mut())
+            } else {
+                None
+            }
+        }
+        /// If the union variant matches, return the owned LogMetaT, setting the union to NONE.
+        pub fn take_log_meta(&mut self) -> Option<Box<LogMetaT>> {
+            if let Self::LogMeta(_) = self {
+                let v = core::mem::replace(self, Self::NONE);
+                if let Self::LogMeta(w) = v {
+                    Some(w)
+                } else {
+                    unreachable!()
+                }
+            } else {
+                None
+            }
+        }
+        /// If the union variant matches, return a reference to the LogMetaT.
+        pub fn as_log_meta(&self) -> Option<&LogMetaT> {
+            if let Self::LogMeta(v) = self {
+                Some(v.as_ref())
+            } else {
+                None
+            }
+        }
+        /// If the union variant matches, return a mutable reference to the LogMetaT.
+        pub fn as_log_meta_mut(&mut self) -> Option<&mut LogMetaT> {
+            if let Self::LogMeta(v) = self {
+                Some(v.as_mut())
+            } else {
+                None
+            }
+        }
+        /// If the union variant matches, return the owned TraceMetaT, setting the union to NONE.
+        pub fn take_trace_meta(&mut self) -> Option<Box<TraceMetaT>> {
+            if let Self::TraceMeta(_) = self {
+                let v = core::mem::replace(self, Self::NONE);
+                if let Self::TraceMeta(w) = v {
+                    Some(w)
+                } else {
+                    unreachable!()
+                }
+            } else {
+                None
+            }
+        }
+        /// If the union variant matches, return a reference to the TraceMetaT.
+        pub fn as_trace_meta(&self) -> Option<&TraceMetaT> {
+            if let Self::TraceMeta(v) = self {
+                Some(v.as_ref())
+            } else {
+                None
+            }
+        }
+        /// If the union variant matches, return a mutable reference to the TraceMetaT.
+        pub fn as_trace_meta_mut(&mut self) -> Option<&mut TraceMetaT> {
+            if let Self::TraceMeta(v) = self {
+                Some(v.as_mut())
+            } else {
+                None
+            }
+        }
+    }
     pub enum EventMetaOffset {}
     #[derive(Copy, Clone, PartialEq)]
 
-    /// Metadata specific to an 'Event' type WAL entry.
     pub struct EventMeta<'a> {
         pub _tab: flatbuffers::Table<'a>,
     }
@@ -281,6 +378,11 @@ pub mod wal {
                 builder.add_service_id(x);
             }
             builder.finish()
+        }
+
+        pub fn unpack(&self) -> EventMetaT {
+            let service_id = self.service_id().map(|x| x.to_string());
+            EventMetaT { service_id }
         }
 
         #[inline]
@@ -358,6 +460,25 @@ pub mod wal {
             ds.finish()
         }
     }
+    #[non_exhaustive]
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct EventMetaT {
+        pub service_id: Option<String>,
+    }
+    impl Default for EventMetaT {
+        fn default() -> Self {
+            Self { service_id: None }
+        }
+    }
+    impl EventMetaT {
+        pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+            &self,
+            _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>,
+        ) -> flatbuffers::WIPOffset<EventMeta<'b>> {
+            let service_id = self.service_id.as_ref().map(|x| _fbb.create_string(x));
+            EventMeta::create(_fbb, &EventMetaArgs { service_id })
+        }
+    }
     pub enum LogMetaOffset {}
     #[derive(Copy, Clone, PartialEq)]
 
@@ -380,14 +501,12 @@ pub mod wal {
     }
 
     impl<'a> LogMeta<'a> {
-        pub const VT_FLIGHT_ID: flatbuffers::VOffsetT = 4;
-        pub const VT_ARROW_BUFFER_ID: flatbuffers::VOffsetT = 6;
-        pub const VT_SERVICE_ID: flatbuffers::VOffsetT = 8;
-        pub const VT_PARTITION_FIELDS: flatbuffers::VOffsetT = 10;
-        pub const VT_NUM_OF_ROWS: flatbuffers::VOffsetT = 12;
-        pub const VT_NUM_OF_COLUMNS: flatbuffers::VOffsetT = 14;
-        pub const VT_SCHEMA_HASH: flatbuffers::VOffsetT = 16;
-        pub const VT_SCHEMA_ID: flatbuffers::VOffsetT = 18;
+        pub const VT_SCHEMA_ID: flatbuffers::VOffsetT = 4;
+        pub const VT_SCHEMA_HASH: flatbuffers::VOffsetT = 6;
+        pub const VT_FLIGHT_ID: flatbuffers::VOffsetT = 8;
+        pub const VT_ARROW_BUFFER_ID: flatbuffers::VOffsetT = 10;
+        pub const VT_SERVICE_ID: flatbuffers::VOffsetT = 12;
+        pub const VT_PARTITION_FIELDS: flatbuffers::VOffsetT = 14;
 
         #[inline]
         pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -404,11 +523,9 @@ pub mod wal {
             args: &'args LogMetaArgs<'args>,
         ) -> flatbuffers::WIPOffset<LogMeta<'bldr>> {
             let mut builder = LogMetaBuilder::new(_fbb);
-            builder.add_schema_id(args.schema_id);
-            builder.add_schema_hash(args.schema_hash);
-            builder.add_num_of_columns(args.num_of_columns);
-            builder.add_num_of_rows(args.num_of_rows);
             builder.add_arrow_buffer_id(args.arrow_buffer_id);
+            builder.add_schema_hash(args.schema_hash);
+            builder.add_schema_id(args.schema_id);
             if let Some(x) = args.partition_fields {
                 builder.add_partition_fields(x);
             }
@@ -421,6 +538,47 @@ pub mod wal {
             builder.finish()
         }
 
+        pub fn unpack(&self) -> LogMetaT {
+            let schema_id = self.schema_id();
+            let schema_hash = self.schema_hash();
+            let flight_id = self.flight_id().map(|x| x.to_string());
+            let arrow_buffer_id = self.arrow_buffer_id();
+            let service_id = self.service_id().map(|x| x.to_string());
+            let partition_fields = self
+                .partition_fields()
+                .map(|x| x.iter().map(|s| s.to_string()).collect());
+            LogMetaT {
+                schema_id,
+                schema_hash,
+                flight_id,
+                arrow_buffer_id,
+                service_id,
+                partition_fields,
+            }
+        }
+
+        #[inline]
+        pub fn schema_id(&self) -> u64 {
+            // Safety:
+            // Created from valid Table for this object
+            // which contains a valid value in this slot
+            unsafe {
+                self._tab
+                    .get::<u64>(LogMeta::VT_SCHEMA_ID, Some(0))
+                    .unwrap()
+            }
+        }
+        #[inline]
+        pub fn schema_hash(&self) -> u64 {
+            // Safety:
+            // Created from valid Table for this object
+            // which contains a valid value in this slot
+            unsafe {
+                self._tab
+                    .get::<u64>(LogMeta::VT_SCHEMA_HASH, Some(0))
+                    .unwrap()
+            }
+        }
         #[inline]
         pub fn flight_id(&self) -> Option<&'a str> {
             // Safety:
@@ -465,50 +623,6 @@ pub mod wal {
                 >>(LogMeta::VT_PARTITION_FIELDS, None)
             }
         }
-        #[inline]
-        pub fn num_of_rows(&self) -> u64 {
-            // Safety:
-            // Created from valid Table for this object
-            // which contains a valid value in this slot
-            unsafe {
-                self._tab
-                    .get::<u64>(LogMeta::VT_NUM_OF_ROWS, Some(0))
-                    .unwrap()
-            }
-        }
-        #[inline]
-        pub fn num_of_columns(&self) -> u64 {
-            // Safety:
-            // Created from valid Table for this object
-            // which contains a valid value in this slot
-            unsafe {
-                self._tab
-                    .get::<u64>(LogMeta::VT_NUM_OF_COLUMNS, Some(0))
-                    .unwrap()
-            }
-        }
-        #[inline]
-        pub fn schema_hash(&self) -> u64 {
-            // Safety:
-            // Created from valid Table for this object
-            // which contains a valid value in this slot
-            unsafe {
-                self._tab
-                    .get::<u64>(LogMeta::VT_SCHEMA_HASH, Some(0))
-                    .unwrap()
-            }
-        }
-        #[inline]
-        pub fn schema_id(&self) -> u64 {
-            // Safety:
-            // Created from valid Table for this object
-            // which contains a valid value in this slot
-            unsafe {
-                self._tab
-                    .get::<u64>(LogMeta::VT_SCHEMA_ID, Some(0))
-                    .unwrap()
-            }
-        }
     }
 
     impl flatbuffers::Verifiable for LogMeta<'_> {
@@ -519,6 +633,8 @@ pub mod wal {
         ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
             use self::flatbuffers::Verifiable;
             v.visit_table(pos)?
+                .visit_field::<u64>("schema_id", Self::VT_SCHEMA_ID, false)?
+                .visit_field::<u64>("schema_hash", Self::VT_SCHEMA_HASH, false)?
                 .visit_field::<flatbuffers::ForwardsUOffset<&str>>(
                     "flight_id",
                     Self::VT_FLIGHT_ID,
@@ -533,38 +649,30 @@ pub mod wal {
                 .visit_field::<flatbuffers::ForwardsUOffset<
                     flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&'_ str>>,
                 >>("partition_fields", Self::VT_PARTITION_FIELDS, false)?
-                .visit_field::<u64>("num_of_rows", Self::VT_NUM_OF_ROWS, false)?
-                .visit_field::<u64>("num_of_columns", Self::VT_NUM_OF_COLUMNS, false)?
-                .visit_field::<u64>("schema_hash", Self::VT_SCHEMA_HASH, false)?
-                .visit_field::<u64>("schema_id", Self::VT_SCHEMA_ID, false)?
                 .finish();
             Ok(())
         }
     }
     pub struct LogMetaArgs<'a> {
+        pub schema_id: u64,
+        pub schema_hash: u64,
         pub flight_id: Option<flatbuffers::WIPOffset<&'a str>>,
         pub arrow_buffer_id: u64,
         pub service_id: Option<flatbuffers::WIPOffset<&'a str>>,
         pub partition_fields: Option<
             flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>>,
         >,
-        pub num_of_rows: u64,
-        pub num_of_columns: u64,
-        pub schema_hash: u64,
-        pub schema_id: u64,
     }
     impl<'a> Default for LogMetaArgs<'a> {
         #[inline]
         fn default() -> Self {
             LogMetaArgs {
+                schema_id: 0,
+                schema_hash: 0,
                 flight_id: None,
                 arrow_buffer_id: 0,
                 service_id: None,
                 partition_fields: None,
-                num_of_rows: 0,
-                num_of_columns: 0,
-                schema_hash: 0,
-                schema_id: 0,
             }
         }
     }
@@ -574,6 +682,16 @@ pub mod wal {
         start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
     }
     impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> LogMetaBuilder<'a, 'b, A> {
+        #[inline]
+        pub fn add_schema_id(&mut self, schema_id: u64) {
+            self.fbb_
+                .push_slot::<u64>(LogMeta::VT_SCHEMA_ID, schema_id, 0);
+        }
+        #[inline]
+        pub fn add_schema_hash(&mut self, schema_hash: u64) {
+            self.fbb_
+                .push_slot::<u64>(LogMeta::VT_SCHEMA_HASH, schema_hash, 0);
+        }
         #[inline]
         pub fn add_flight_id(&mut self, flight_id: flatbuffers::WIPOffset<&'b str>) {
             self.fbb_
@@ -602,26 +720,6 @@ pub mod wal {
             );
         }
         #[inline]
-        pub fn add_num_of_rows(&mut self, num_of_rows: u64) {
-            self.fbb_
-                .push_slot::<u64>(LogMeta::VT_NUM_OF_ROWS, num_of_rows, 0);
-        }
-        #[inline]
-        pub fn add_num_of_columns(&mut self, num_of_columns: u64) {
-            self.fbb_
-                .push_slot::<u64>(LogMeta::VT_NUM_OF_COLUMNS, num_of_columns, 0);
-        }
-        #[inline]
-        pub fn add_schema_hash(&mut self, schema_hash: u64) {
-            self.fbb_
-                .push_slot::<u64>(LogMeta::VT_SCHEMA_HASH, schema_hash, 0);
-        }
-        #[inline]
-        pub fn add_schema_id(&mut self, schema_id: u64) {
-            self.fbb_
-                .push_slot::<u64>(LogMeta::VT_SCHEMA_ID, schema_id, 0);
-        }
-        #[inline]
         pub fn new(
             _fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
         ) -> LogMetaBuilder<'a, 'b, A> {
@@ -641,15 +739,62 @@ pub mod wal {
     impl core::fmt::Debug for LogMeta<'_> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             let mut ds = f.debug_struct("LogMeta");
+            ds.field("schema_id", &self.schema_id());
+            ds.field("schema_hash", &self.schema_hash());
             ds.field("flight_id", &self.flight_id());
             ds.field("arrow_buffer_id", &self.arrow_buffer_id());
             ds.field("service_id", &self.service_id());
             ds.field("partition_fields", &self.partition_fields());
-            ds.field("num_of_rows", &self.num_of_rows());
-            ds.field("num_of_columns", &self.num_of_columns());
-            ds.field("schema_hash", &self.schema_hash());
-            ds.field("schema_id", &self.schema_id());
             ds.finish()
+        }
+    }
+    #[non_exhaustive]
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct LogMetaT {
+        pub schema_id: u64,
+        pub schema_hash: u64,
+        pub flight_id: Option<String>,
+        pub arrow_buffer_id: u64,
+        pub service_id: Option<String>,
+        pub partition_fields: Option<Vec<String>>,
+    }
+    impl Default for LogMetaT {
+        fn default() -> Self {
+            Self {
+                schema_id: 0,
+                schema_hash: 0,
+                flight_id: None,
+                arrow_buffer_id: 0,
+                service_id: None,
+                partition_fields: None,
+            }
+        }
+    }
+    impl LogMetaT {
+        pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+            &self,
+            _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>,
+        ) -> flatbuffers::WIPOffset<LogMeta<'b>> {
+            let schema_id = self.schema_id;
+            let schema_hash = self.schema_hash;
+            let flight_id = self.flight_id.as_ref().map(|x| _fbb.create_string(x));
+            let arrow_buffer_id = self.arrow_buffer_id;
+            let service_id = self.service_id.as_ref().map(|x| _fbb.create_string(x));
+            let partition_fields = self.partition_fields.as_ref().map(|x| {
+                let w: Vec<_> = x.iter().map(|s| _fbb.create_string(s)).collect();
+                _fbb.create_vector(&w)
+            });
+            LogMeta::create(
+                _fbb,
+                &LogMetaArgs {
+                    schema_id,
+                    schema_hash,
+                    flight_id,
+                    arrow_buffer_id,
+                    service_id,
+                    partition_fields,
+                },
+            )
         }
     }
     pub enum TraceMetaOffset {}
@@ -705,6 +850,21 @@ pub mod wal {
                 builder.add_service_id(x);
             }
             builder.finish()
+        }
+
+        pub fn unpack(&self) -> TraceMetaT {
+            let service_id = self.service_id().map(|x| x.to_string());
+            let tenant_id = self.tenant_id().map(|x| x.to_string());
+            let timestamp_unix_micros = self.timestamp_unix_micros();
+            let partition_fields = self
+                .partition_fields()
+                .map(|x| x.iter().map(|s| s.to_string()).collect());
+            TraceMetaT {
+                service_id,
+                tenant_id,
+                timestamp_unix_micros,
+                partition_fields,
+            }
         }
 
         #[inline]
@@ -867,6 +1027,47 @@ pub mod wal {
             ds.finish()
         }
     }
+    #[non_exhaustive]
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct TraceMetaT {
+        pub service_id: Option<String>,
+        pub tenant_id: Option<String>,
+        pub timestamp_unix_micros: u64,
+        pub partition_fields: Option<Vec<String>>,
+    }
+    impl Default for TraceMetaT {
+        fn default() -> Self {
+            Self {
+                service_id: None,
+                tenant_id: None,
+                timestamp_unix_micros: 0,
+                partition_fields: None,
+            }
+        }
+    }
+    impl TraceMetaT {
+        pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+            &self,
+            _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>,
+        ) -> flatbuffers::WIPOffset<TraceMeta<'b>> {
+            let service_id = self.service_id.as_ref().map(|x| _fbb.create_string(x));
+            let tenant_id = self.tenant_id.as_ref().map(|x| _fbb.create_string(x));
+            let timestamp_unix_micros = self.timestamp_unix_micros;
+            let partition_fields = self.partition_fields.as_ref().map(|x| {
+                let w: Vec<_> = x.iter().map(|s| _fbb.create_string(s)).collect();
+                _fbb.create_vector(&w)
+            });
+            TraceMeta::create(
+                _fbb,
+                &TraceMetaArgs {
+                    service_id,
+                    tenant_id,
+                    timestamp_unix_micros,
+                    partition_fields,
+                },
+            )
+        }
+    }
     pub enum FlatbufMetaOffset {}
     #[derive(Copy, Clone, PartialEq)]
 
@@ -893,11 +1094,10 @@ pub mod wal {
         pub const VT_VERSION: flatbuffers::VOffsetT = 4;
         pub const VT_FLAGS: flatbuffers::VOffsetT = 6;
         pub const VT_TIMESTAMP_UNIX_MICROS: flatbuffers::VOffsetT = 8;
-        pub const VT_CHECKSUM: flatbuffers::VOffsetT = 10;
-        pub const VT_SERIALIZATION: flatbuffers::VOffsetT = 12;
-        pub const VT_MAGIC_NUMBER: flatbuffers::VOffsetT = 14;
-        pub const VT_META_TYPE: flatbuffers::VOffsetT = 16;
-        pub const VT_META: flatbuffers::VOffsetT = 18;
+        pub const VT_SERIALIZATION: flatbuffers::VOffsetT = 10;
+        pub const VT_MAGIC_NUMBER: flatbuffers::VOffsetT = 12;
+        pub const VT_META_TYPE: flatbuffers::VOffsetT = 14;
+        pub const VT_META: flatbuffers::VOffsetT = 16;
 
         #[inline]
         pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -911,20 +1111,56 @@ pub mod wal {
             A: flatbuffers::Allocator + 'bldr,
         >(
             _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
-            args: &'args FlatbufMetaArgs,
+            args: &'args FlatbufMetaArgs<'args>,
         ) -> flatbuffers::WIPOffset<FlatbufMeta<'bldr>> {
             let mut builder = FlatbufMetaBuilder::new(_fbb);
-            builder.add_magic_number(args.magic_number);
-            builder.add_checksum(args.checksum);
             builder.add_timestamp_unix_micros(args.timestamp_unix_micros);
             if let Some(x) = args.meta {
                 builder.add_meta(x);
+            }
+            if let Some(x) = args.magic_number {
+                builder.add_magic_number(x);
             }
             builder.add_serialization(args.serialization);
             builder.add_meta_type(args.meta_type);
             builder.add_flags(args.flags);
             builder.add_version(args.version);
             builder.finish()
+        }
+
+        pub fn unpack(&self) -> FlatbufMetaT {
+            let version = self.version();
+            let flags = self.flags();
+            let timestamp_unix_micros = self.timestamp_unix_micros();
+            let serialization = self.serialization();
+            let magic_number = self.magic_number().map(|x| x.into_iter().collect());
+            let meta = match self.meta_type() {
+                Metadata::NONE => MetadataT::NONE,
+                Metadata::EventMeta => MetadataT::EventMeta(Box::new(
+                    self.meta_as_event_meta()
+                        .expect("Invalid union table, expected `Metadata::EventMeta`.")
+                        .unpack(),
+                )),
+                Metadata::LogMeta => MetadataT::LogMeta(Box::new(
+                    self.meta_as_log_meta()
+                        .expect("Invalid union table, expected `Metadata::LogMeta`.")
+                        .unpack(),
+                )),
+                Metadata::TraceMeta => MetadataT::TraceMeta(Box::new(
+                    self.meta_as_trace_meta()
+                        .expect("Invalid union table, expected `Metadata::TraceMeta`.")
+                        .unpack(),
+                )),
+                _ => MetadataT::NONE,
+            };
+            FlatbufMetaT {
+                version,
+                flags,
+                timestamp_unix_micros,
+                serialization,
+                magic_number,
+                meta,
+            }
         }
 
         #[inline]
@@ -957,17 +1193,6 @@ pub mod wal {
             }
         }
         #[inline]
-        pub fn checksum(&self) -> u64 {
-            // Safety:
-            // Created from valid Table for this object
-            // which contains a valid value in this slot
-            unsafe {
-                self._tab
-                    .get::<u64>(FlatbufMeta::VT_CHECKSUM, Some(0))
-                    .unwrap()
-            }
-        }
-        #[inline]
         pub fn serialization(&self) -> Serialization {
             // Safety:
             // Created from valid Table for this object
@@ -979,14 +1204,16 @@ pub mod wal {
             }
         }
         #[inline]
-        pub fn magic_number(&self) -> u64 {
+        pub fn magic_number(&self) -> Option<flatbuffers::Vector<'a, u8>> {
             // Safety:
             // Created from valid Table for this object
             // which contains a valid value in this slot
             unsafe {
                 self._tab
-                    .get::<u64>(FlatbufMeta::VT_MAGIC_NUMBER, Some(0))
-                    .unwrap()
+                    .get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, u8>>>(
+                        FlatbufMeta::VT_MAGIC_NUMBER,
+                        None,
+                    )
             }
         }
         #[inline]
@@ -1074,9 +1301,12 @@ pub mod wal {
                     Self::VT_TIMESTAMP_UNIX_MICROS,
                     false,
                 )?
-                .visit_field::<u64>("checksum", Self::VT_CHECKSUM, false)?
                 .visit_field::<Serialization>("serialization", Self::VT_SERIALIZATION, false)?
-                .visit_field::<u64>("magic_number", Self::VT_MAGIC_NUMBER, false)?
+                .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, u8>>>(
+                    "magic_number",
+                    Self::VT_MAGIC_NUMBER,
+                    false,
+                )?
                 .visit_union::<Metadata, _>(
                     "meta_type",
                     Self::VT_META_TYPE,
@@ -1106,26 +1336,24 @@ pub mod wal {
             Ok(())
         }
     }
-    pub struct FlatbufMetaArgs {
+    pub struct FlatbufMetaArgs<'a> {
         pub version: u8,
         pub flags: u8,
         pub timestamp_unix_micros: u64,
-        pub checksum: u64,
         pub serialization: Serialization,
-        pub magic_number: u64,
+        pub magic_number: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, u8>>>,
         pub meta_type: Metadata,
         pub meta: Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>>,
     }
-    impl<'a> Default for FlatbufMetaArgs {
+    impl<'a> Default for FlatbufMetaArgs<'a> {
         #[inline]
         fn default() -> Self {
             FlatbufMetaArgs {
                 version: 1,
                 flags: 0,
                 timestamp_unix_micros: 0,
-                checksum: 0,
                 serialization: Serialization::Arrow,
-                magic_number: 0,
+                magic_number: None,
                 meta_type: Metadata::NONE,
                 meta: None,
             }
@@ -1155,11 +1383,6 @@ pub mod wal {
             );
         }
         #[inline]
-        pub fn add_checksum(&mut self, checksum: u64) {
-            self.fbb_
-                .push_slot::<u64>(FlatbufMeta::VT_CHECKSUM, checksum, 0);
-        }
-        #[inline]
         pub fn add_serialization(&mut self, serialization: Serialization) {
             self.fbb_.push_slot::<Serialization>(
                 FlatbufMeta::VT_SERIALIZATION,
@@ -1168,9 +1391,14 @@ pub mod wal {
             );
         }
         #[inline]
-        pub fn add_magic_number(&mut self, magic_number: u64) {
-            self.fbb_
-                .push_slot::<u64>(FlatbufMeta::VT_MAGIC_NUMBER, magic_number, 0);
+        pub fn add_magic_number(
+            &mut self,
+            magic_number: flatbuffers::WIPOffset<flatbuffers::Vector<'b, u8>>,
+        ) {
+            self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(
+                FlatbufMeta::VT_MAGIC_NUMBER,
+                magic_number,
+            );
         }
         #[inline]
         pub fn add_meta_type(&mut self, meta_type: Metadata) {
@@ -1205,7 +1433,6 @@ pub mod wal {
             ds.field("version", &self.version());
             ds.field("flags", &self.flags());
             ds.field("timestamp_unix_micros", &self.timestamp_unix_micros());
-            ds.field("checksum", &self.checksum());
             ds.field("serialization", &self.serialization());
             ds.field("magic_number", &self.magic_number());
             ds.field("meta_type", &self.meta_type());
@@ -1246,6 +1473,54 @@ pub mod wal {
                 }
             };
             ds.finish()
+        }
+    }
+    #[non_exhaustive]
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct FlatbufMetaT {
+        pub version: u8,
+        pub flags: u8,
+        pub timestamp_unix_micros: u64,
+        pub serialization: Serialization,
+        pub magic_number: Option<Vec<u8>>,
+        pub meta: MetadataT,
+    }
+    impl Default for FlatbufMetaT {
+        fn default() -> Self {
+            Self {
+                version: 1,
+                flags: 0,
+                timestamp_unix_micros: 0,
+                serialization: Serialization::Arrow,
+                magic_number: None,
+                meta: MetadataT::NONE,
+            }
+        }
+    }
+    impl FlatbufMetaT {
+        pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+            &self,
+            _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>,
+        ) -> flatbuffers::WIPOffset<FlatbufMeta<'b>> {
+            let version = self.version;
+            let flags = self.flags;
+            let timestamp_unix_micros = self.timestamp_unix_micros;
+            let serialization = self.serialization;
+            let magic_number = self.magic_number.as_ref().map(|x| _fbb.create_vector(x));
+            let meta_type = self.meta.metadata_type();
+            let meta = self.meta.pack(_fbb);
+            FlatbufMeta::create(
+                _fbb,
+                &FlatbufMetaArgs {
+                    version,
+                    flags,
+                    timestamp_unix_micros,
+                    serialization,
+                    magic_number,
+                    meta_type,
+                    meta,
+                },
+            )
         }
     }
     #[inline]
