@@ -50,7 +50,7 @@ impl FlightService for LogFlightServer {
         let mut flight_data_stream = request.into_inner();
         let mut descriptor_opt: Option<arrow_flight::FlightDescriptor> = None;
         let mut schema_opt: Option<Arc<Schema>> = None;
-        let received_batches: Vec<RecordBatch> = Vec::new();
+        let mut received_batches: Vec<RecordBatch> = Vec::new();
         let mut name: Option<String> = Option::None;
 
         while let Some(flight_data_res) = flight_data_stream.next().await {
@@ -103,8 +103,11 @@ impl FlightService for LogFlightServer {
                         },
                         data: Arc::new(batch.clone()),
                     };
-                    // received_batches.push(batch);
+                    // Store batch in received_batches for later insertion into self.data
+                    received_batches.push(batch.clone());
                     let _ = self.broadcast_actor.send(batch_wrapped).await;
+                    // Print for debug
+                    info!("Batch received for flight: {} | rows: {}", name.clone().unwrap_or_default(), batch.num_rows());
                 }
             } else {
                 return Err(Status::failed_precondition("Received data before schema"));
@@ -114,10 +117,10 @@ impl FlightService for LogFlightServer {
         // TODO
         // Combine all the received RecordBatches into a single one
         if !received_batches.is_empty() {
-            let data = self.data.lock().await;
+            let mut data = self.data.lock().await;
 
-            // let entry = data.entry(name.unwrap().clone()).or_insert_with(Vec::new);
-            // entry.extend(received_batches);
+            let entry: &mut Vec<RecordBatch> = data.entry(name.unwrap().clone()).or_insert_with(Vec::new);
+            entry.extend(received_batches);
         }
 
         let result_stream = futures::stream::once(async { Ok(PutResult::default()) });

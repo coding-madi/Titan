@@ -24,9 +24,9 @@ otel-arrow-batch-to-disk/
 
 ## 3. Sequence Diagram
 
-![Sequence Diagram](docs/logGenFlow.png)
+![Sequence Diagram](docs/logGenFlow_v1.png)
 
-PUML source: [`docs/sequence.puml`](docs/logGenFlow.puml)
+PUML source: [`docs/sequence.puml`](docs/logGenFlow_v1.puml)
 
 ## 4. Getting Started
 
@@ -38,39 +38,22 @@ PUML source: [`docs/sequence.puml`](docs/logGenFlow.puml)
   ```
 
 ### Generating Logs
-To generate OTEL logs and write them in Arrow format:
+To generate OTEL logs and send them to the Poros Flight server:
 ```bash
 python src/main.py
 ```
 - Generates 3 OTEL logs per second.
-- Batches and writes logs to Arrow and stream files every 60 seconds.
-- Output files (`.arrow` and `.stream`) are saved in the `files/` directory.
-
-### Reading Arrow Files
-To read and display the contents of an Arrow file:
-```bash
-python src/reader.py files/otel_logs_YYYYMMDD_HHMM.arrow
-```
-- Replace `files/otel_logs_YYYYMMDD_HHMM.arrow` with the actual file name.
-- The script prints the Arrow file contents as a pandas DataFrame in the terminal.
+- Batches and sends logs to the Poros Flight server every 60 seconds.
+- No Arrow or stream files are written to disk in this mode.
 
 ## 5. Example Output
 
 **main.py output:**
 ```
-Generating 3 OTEL logs/sec — batching every 60s and rotating files...
+Generating 3 OTEL logs/sec — batching every 60s and sending to Poros Flight server...
 Writing 180 records...
-Wrote batch to files/otel_logs_20250621_1058.arrow
-Appended 180 records to files/otel_logs.stream
-```
-
-**reader.py output:**
-```
-          time_unix_nano  severity_number  ...  span_id  attributes
-0    1750503437164505088               13  ...  ...      ...
-1    ...
-...
-[180 rows x 7 columns]
+🚀 Sent batch of 180 records to Poros Flight server at grpc+tcp://127.0.0.1:50051
+📡 Appended 180 records to Poros Flight server
 ```
 
 ---
