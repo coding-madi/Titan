@@ -43,7 +43,11 @@ class SimpleFlightClient:
                 self.bulk_op_metrics.append((bytes_sent_current_op, elapsed_time))
 
             size_mb = bytes_sent_current_op / (1024 * 1024)
-            throughput = size_mb / elapsed_time if elapsed_time > 0 else 0
+            if elapsed_time > 0:
+                throughput = size_mb / elapsed_time
+            else:
+                logger.warning(f"Elapsed time is 0 for '{dataset_path}', defaulting throughput to 0")
+                throughput = 0
 
             # logger.info(f"Sent {table.num_rows} rows for '{dataset_path}'. Data: {size_mb:.2f} MB in {elapsed_time:.4f}s ({throughput:.2f} MB/s)")
             return True
@@ -139,8 +143,13 @@ class SimpleFlightClient:
         total_successful_ops = len(self.bulk_op_metrics)
 
         overall_total_bytes_mb = total_bytes_sent / (1024 * 1024)
-        overall_throughput_mbps = overall_total_bytes_mb / total_time_spent if total_time_spent > 0 else 0
-        overall_rate_ops_per_sec = total_successful_ops / total_time_spent if total_time_spent > 0 else 0
+        if total_time_spent > 0:
+            overall_throughput_mbps = overall_total_bytes_mb / total_time_spent
+            overall_rate_ops_per_sec = total_successful_ops / total_time_spent
+        else:
+            logger.warning("Total time spent is 0, defaulting throughput and rate to 0")
+            overall_throughput_mbps = 0
+            overall_rate_ops_per_sec = 0
 
         return overall_total_bytes_mb, total_time_spent, total_successful_ops, overall_throughput_mbps, overall_rate_ops_per_sec
 

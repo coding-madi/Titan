@@ -5,4 +5,5 @@ pub mod logging;
 pub mod schema;
 pub mod servers;
 pub mod utils;
+pub mod version;
 pub mod wal;

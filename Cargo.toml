@@ -23,6 +23,8 @@ secrecy = { version = "0.10.3", features = ["serde"] }
 serde = "1.0.219"
 serde_derive = "1.0.219"
 config = { version = "0.15.11", features = ["yaml"] } # read yaml, json file
+clap = { version = "4", features = ["derive"] } # Use the latest clap version (e.g., "4")
+flatbuffers = "24.3.25"  # Optional if you use it inside build.rs
 arrow = {version = "=53.2.0"}
 arrow-array = "=53.2.0"
 arrow-flight = "=53.2.0"
@@ -31,8 +33,10 @@ arrow-schema = "=53.2.0"
 chrono = "=0.4.38"
 futures-util = "0.3.31"
 futures = "0.3.31"
-flatbuffers = "25.2.10"
 tempfile = "3.20.0"
 crc32fast = "1.4.2"
 bytemuck = "1.14"
 
+
+[build-dependencies]
+flatbuffers = "24.3.25"  # Optional if you use it inside build.rs

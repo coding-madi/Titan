@@ -8,9 +8,7 @@ use tracing::info;
 
 use crate::{
     actors::broadcast::RecordBatchWrapper,
-    utils::transformers::{
-        build_flatbufmeta_with_logmeta, serialize_record_batch_full_ipc,
-    },
+    utils::transformers::{build_flatbufmeta_with_logmeta, serialize_record_batch_full_ipc},
     wal::writer::writer::write_wal_block,
 };
 

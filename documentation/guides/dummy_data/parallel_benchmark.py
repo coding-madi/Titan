@@ -38,7 +38,11 @@ class SimpleFlightClient:
 
             compressed_size_bytes = len(batch.compressed_bytes)
             compressed_mb = compressed_size_bytes / (1024 * 1024)
-            throughput = compressed_mb / elapsed_time if elapsed_time > 0 else 0
+            if elapsed_time > 0:
+                throughput = compressed_mb / elapsed_time
+            else:
+                logger.warning(f"[{batch.dataset_path}] Elapsed time is 0, defaulting throughput to 0")
+                throughput = 0
 
             logger.info(f"[{batch.dataset_path}] Sent {batch.num_rows} rows: Compressed={compressed_mb:.2f} MB \
                         in {elapsed_time:.3f}s ({throughput:.2f} MB/s)")
@@ -104,8 +108,13 @@ def parallel_send_batches(host: str, port: int,
     successful = sum(1 for r in results if r[1] > 0)
 
     total_mb = total_bytes / (1024 * 1024)
-    throughput = total_mb / wall_clock_time if wall_clock_time > 0 else 0
-    rate = successful / wall_clock_time if wall_clock_time > 0 else 0
+    if wall_clock_time > 0:
+        throughput = total_mb / wall_clock_time
+        rate = successful / wall_clock_time
+    else:
+        logger.warning("Wall-clock time is 0, defaulting throughput and rate to 0")
+        throughput = 0
+        rate = 0
 
     logger.info("\n--- Parallel Benchmark Summary ---")
     logger.info(f"Total data sent: {total_mb:.2f} MB")

@@ -6,3 +6,5 @@ rs_cd.log
 *.odt
 **/venv
 .vscode/launch.json
+*.pyc
+*.log
