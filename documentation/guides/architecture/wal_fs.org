@@ -1,35 +1,37 @@
-┌────────────────────────────┐
-│       WALBlock Header      │  (fixed 64 bytes, aligned)
-├────────────────────────────┤
-│ MAGIC           [8 bytes]  │  → e.g. "WALBLOCK"
-│ VERSION         [1 byte]   │  → WAL format version
-│ FLAGS           [1 byte]   │  → compression, encryption, etc.
-│ RESERVED        [6 bytes]  │  → padding / future use
-│ METADATA_OFFSET [8 bytes]  │  → relative offset from block start
-│ METADATA_LENGTH [2 bytes]  │  → size of metadata in bytes
-│ RESERVED2       [2 bytes]  │  → padding
-│ CHECKSUM        [4 bytes]  │  → CRC32 or xxHash
-│ RESERVE_OFFSET  [8 bytes]  │  → offset of reserve section
-│ RESERVE_LENGTH  [8 bytes]  │  → length of reserve section
-└────────────────────────────┘
+* Simplified
 
-          ▼
+🟦 WAL Block Header (64 bytes)
++----------------------+----------------------------+-------------+
+| Offset (bytes)       | Field                      | Size        |
++----------------------+----------------------------+-------------+
+| 0x00                 | magic ("WALMAGIC")         | 8 bytes     |
+| 0x08                 | metadata_offset            | 8 bytes     |
+| 0x10                 | metadata_length            | 2 bytes     |
+| 0x12                 | checksum                   | 4 bytes     |
+| 0x16                 | reserve_offset             | 8 bytes     |
+| 0x1E                 | reserve_length             | 8 bytes     |
+| 0x26                 | data_offset                | 8 bytes     |
+| 0x2E                 | data_length                | 8 bytes     |
+| 0x36                 | total_block_size           | 8 bytes     |
+| 0x3E                 | padding                    | 2 bytes     |
++----------------------+----------------------------+-------------+
 
-┌────────────────────────────┐
-│        Metadata Bytes       │  → FlatBuf or Raw JSON etc.
-│        [variable size]      │
-└────────────────────────────┘
+🟨 FlatBuffers Metadata (starts at `metadata_offset`)
++----------------------+----------------------------+-------------+
+| Offset (relative)    | Field                      | Size        |
++----------------------+----------------------------+-------------+
+| +0x00                | version                    | 1 byte      |
+| +0x01                | flags                      | 1 byte      |
+| +0x02                | padding                    | 6 bytes     |
+| +0x08                | timestamp_unix_micros      | 8 bytes     |
+| +0x10                | serialization              | 2 bytes     |
+| +0x12                | padding                    | 6 bytes     |
+| +0x18                | magic_number               | 8 bytes     |
+| +0x20                | meta (union)               | varies      |
++----------------------+----------------------------+-------------+
 
-          ▼
+🟩 Arrow IPC Payload (starts at `data_offset`)
+[ Arrow-formatted RecordBatch stream (length = data_length) ]
 
-┌────────────────────────────┐
-│        Reserved Bytes       │  → alignment, padding, etc.
-│        [variable size]      │
-└────────────────────────────┘
-
-          ▼
-
-┌────────────────────────────┐
-│     Arrow RecordBatch IPC   │  → Serialized RecordBatch
-│        [variable size]      │
-└────────────────────────────┘
+🟥 Reserved Area (optional, starts at `reserve_offset`)
+[ Custom binary payload (length = reserve_length) ]

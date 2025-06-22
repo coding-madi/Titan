@@ -3,6 +3,8 @@ use crate::actors::wal_writter::WalEntry;
 use actix::Handler;
 use actix::{Actor, Addr, Context, Message};
 use arrow_array::RecordBatch;
+use arrow_schema::Schema;
+use std::fmt::Display;
 use tracing::trace;
 
 pub struct Broadcaster {
@@ -67,15 +69,33 @@ impl Handler<RegexRule> for Broadcaster {
 use std::collections::HashMap;
 use std::sync::Arc;
 pub struct RecordBatchWrapper {
-    pub key: String,
-    pub data: Arc<Vec<RecordBatch>>,
+    pub key: Metadata,
+    pub data: Arc<RecordBatch>,
 }
 
-impl Message for RecordBatchWrapper {
+#[derive(Debug, Clone)]
+pub struct Metadata {
+    pub flight: String,
+    pub buffer_id: u64,
+    pub schema: Arc<Schema>,
+    pub service_id: String,
+}
+
+impl Display for Metadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Metadata(key: {}, schema: {:?})",
+            self.flight, self.schema
+        )
+    }
+}
+
+impl<'a> Message for RecordBatchWrapper {
     type Result = ();
 }
 
-impl Handler<RecordBatchWrapper> for Broadcaster {
+impl<'a> Handler<RecordBatchWrapper> for Broadcaster {
     type Result = ();
 
     fn handle(&mut self, msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {

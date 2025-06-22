@@ -14,12 +14,14 @@ pub enum MetadataData<'a> {
 pub struct WalBlockHeader {
     pub magic: [u8; 8],        // 8 bytes
     pub metadata_offset: u64,  // 8 bytes
-    pub metadata_length: u16,  // 2 bytes
-    pub reserved: u16,         // 2 bytes (padding)
+    pub metadata_length: u16,  // 2 bytes Size of the Flatbuf metadata
     pub checksum: u32,         // 4 bytes
     pub reserve_offset: u64,   // 8 bytes
     pub reserve_length: u64,   // 8 bytes
-    pub total_block_size: u64, // total: 40 bytes → padded to 64 for SIMD
+    pub data_offset: u64,      // 8 bytes
+    pub data_length: u64,      // 8 bytes
+    pub total_block_size: u64, // 8 bytes Total size of the block in bytes
+    pub padding: u8,           // 8 bytes Padding to align to 64 bytes
 }
 
 // Required by bytemuck
