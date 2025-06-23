@@ -1,0 +1,58 @@
+// This actor reads Arrow IPC Wal files
+// It then constructs a new Arrow buffer, that is partitioned based on the configuration
+
+// TODO: Vectorized read of the Wal file. Also, read some fields from metadata for grouping.
+// This should be done on a mmap file and the metadata should be stored in Flatbuf.
+
+use actix::{Actor, Handler, Message};
+use crate::actors::broadcast::RegexRule;
+
+pub struct IcebergWriter {
+    table: String,
+    schema: String,
+    partition_fields: Vec<String>,
+}
+
+impl IcebergWriter {
+    pub fn new(table: String, schema: String, partition_fields: Vec<String>) -> Self {
+        IcebergWriter {
+            table,
+            schema,
+            partition_fields,
+        }
+    }
+
+    pub fn default() -> Self {
+        IcebergWriter {
+            table: "log".to_string(),
+            schema: "schema".to_string(),
+            partition_fields: vec!["service".to_string(), "log_name".to_string()],
+        }
+    }
+
+    pub fn write(&self, data: &[u8]) {
+        // Here we would write the data to the WAL file
+        // For now, we just print the data
+        println!("Writing to WAL: {:?}", data);
+    }
+}
+
+impl Actor for IcebergWriter {
+    type Context = actix::Context<Self>;
+}
+
+
+pub struct FlushInstruction;
+
+impl Message for FlushInstruction {
+    type Result = Result<(), String>;
+}
+
+// Trigger a flush to the iceberg table
+impl Handler<FlushInstruction> for IcebergWriter {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: FlushInstruction, ctx: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
+}
