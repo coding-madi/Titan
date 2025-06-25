@@ -1,5 +1,5 @@
-use crate::actors::parsing::{Key, ParsingActor};
-use crate::actors::wal_writter::WalEntry;
+use crate::actors::parser_actor::{ParsingActor, Pattern};
+use crate::actors::wal_actor::WalEntry;
 use actix::Handler;
 use actix::{Actor, Addr, Context, Message};
 use arrow_array::RecordBatch;
@@ -9,28 +9,33 @@ use tracing::trace;
 
 pub struct Broadcaster {
     pub shards: i8,
-    pub regex_handlers: Vec<Addr<ParsingActor>>,
+    pub parser_registry: Vec<Addr<ParsingActor>>,
     next_shard_idx: usize, // Index to keep track of the next shard to send messages to
 }
 
 impl Broadcaster {
     pub fn new(shard_count: i8) -> Self {
-        let mut regex_handlers = Vec::with_capacity(shard_count as usize);
+        let mut parser_registry = Vec::with_capacity(shard_count as usize);
         let wal = WalEntry::new(); // Placeholder for the log writer, should be set to a real actor
         let wal_address = Arc::new(wal.start()); // Start the WAL actor and get its address
         for _ in 0..shard_count {
+            let mut map = HashMap::new();
+            let _ = map.insert(
+                String::from("/benchmark/batch_0"),
+                Pattern::Regex(".*".to_string()),
+            );
             let actor = ParsingActor::start(ParsingActor {
-                regex: HashMap::new(),           // Initialize with an empty regex,
+                patterns: map,                   // Initialize with an empty regex,
                 schema: HashMap::new(),          // Initialize with an empty schema
                 log_writer: wal_address.clone(), // Placeholder for the log writer, should be set to
             });
-            regex_handlers.push(actor);
+            parser_registry.push(actor);
         }
 
         Broadcaster {
-            shards: shard_count,            // Default number of shards
-            regex_handlers: regex_handlers, // Initialize with an empty vector
-            next_shard_idx: 0,              // Start with the first shard
+            shards: shard_count, // Default number of shards
+            parser_registry,     // Initialize with an empty vector
+            next_shard_idx: 0,   // Start with the first shard
         }
     }
 
@@ -45,8 +50,8 @@ impl Actor for Broadcaster {
 
 #[derive(Debug, Clone)]
 pub struct RegexRule {
-    pub pattern: String,
-    pub key: Key,
+    pub pattern: Pattern,
+    pub key: String,
     pub field: String,
 }
 
@@ -69,7 +74,7 @@ impl Handler<RegexRule> for Broadcaster {
 use std::collections::HashMap;
 use std::sync::Arc;
 pub struct RecordBatchWrapper {
-    pub key: Metadata,
+    pub metadata: Metadata,
     pub data: Arc<RecordBatch>,
 }
 
@@ -99,24 +104,24 @@ impl<'a> Handler<RecordBatchWrapper> for Broadcaster {
     type Result = ();
 
     fn handle(&mut self, msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
-        if self.regex_handlers.is_empty() {
+        if self.parser_registry.is_empty() {
             eprintln!("No regex handlers available to distribute RecordBatchWrapper.");
             return;
         }
 
         // Get the address of the next shard in a round-robin fashion
         let current_shard_idx = self.next_shard_idx;
-        let handler = &self.regex_handlers[current_shard_idx];
+        let parser_handle = &self.parser_registry[current_shard_idx];
 
         // Update the index for the next message
-        self.next_shard_idx = (self.next_shard_idx + 1) % self.regex_handlers.len();
+        self.next_shard_idx = (self.next_shard_idx + 1) % self.parser_registry.len();
 
         // Send the RecordBatch to the selected RegexActor
         // Use `do_send` for fire-and-forget, or `send().await` if you need to wait for a response
         trace!(
             "Dispatched RecordBatchWrapper for key '{}' to shard index {}",
-            &msg.key, current_shard_idx
+            &msg.metadata, current_shard_idx
         );
-        handler.do_send(msg);
+        parser_handle.do_send(msg);
     }
 }

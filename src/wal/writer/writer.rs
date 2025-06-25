@@ -1,4 +1,4 @@
-use crate::actors::broadcast::RecordBatchWrapper;
+use crate::actors::broadcast_actor::RecordBatchWrapper;
 use crate::utils::cksum;
 use crate::wal::layout::WalBlockHeader;
 use arrow_ipc::writer::StreamWriter;

@@ -63,18 +63,18 @@ impl core::fmt::Debug for Serialization {
 impl<'a> flatbuffers::Follow<'a> for Serialization {
   type Inner = Self;
   #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner { unsafe {
     let b = flatbuffers::read_scalar_at::<i16>(buf, loc);
     Self(b)
-  }
+  }}
 }
 
 impl flatbuffers::Push for Serialization {
     type Output = Serialization;
     #[inline]
-    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) { unsafe {
         flatbuffers::emplace_scalar::<i16>(dst, self.0);
-    }
+    }}
 }
 
 impl flatbuffers::EndianScalar for Serialization {
@@ -159,18 +159,18 @@ impl core::fmt::Debug for Metadata {
 impl<'a> flatbuffers::Follow<'a> for Metadata {
   type Inner = Self;
   #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner { unsafe {
     let b = flatbuffers::read_scalar_at::<u8>(buf, loc);
     Self(b)
-  }
+  }}
 }
 
 impl flatbuffers::Push for Metadata {
     type Output = Metadata;
     #[inline]
-    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) { unsafe {
         flatbuffers::emplace_scalar::<u8>(dst, self.0);
-    }
+    }}
 }
 
 impl flatbuffers::EndianScalar for Metadata {
@@ -210,9 +210,9 @@ pub struct EventMeta<'a> {
 impl<'a> flatbuffers::Follow<'a> for EventMeta<'a> {
   type Inner = EventMeta<'a>;
   #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner { unsafe {
     Self { _tab: flatbuffers::Table::new(buf, loc) }
-  }
+  }}
 }
 
 impl<'a> EventMeta<'a> {
@@ -309,9 +309,9 @@ pub struct LogMeta<'a> {
 impl<'a> flatbuffers::Follow<'a> for LogMeta<'a> {
   type Inner = LogMeta<'a>;
   #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner { unsafe {
     Self { _tab: flatbuffers::Table::new(buf, loc) }
-  }
+  }}
 }
 
 impl<'a> LogMeta<'a> {
@@ -493,9 +493,9 @@ pub struct TraceMeta<'a> {
 impl<'a> flatbuffers::Follow<'a> for TraceMeta<'a> {
   type Inner = TraceMeta<'a>;
   #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner { unsafe {
     Self { _tab: flatbuffers::Table::new(buf, loc) }
-  }
+  }}
 }
 
 impl<'a> TraceMeta<'a> {
@@ -644,9 +644,9 @@ pub struct FlatbufMeta<'a> {
 impl<'a> flatbuffers::Follow<'a> for FlatbufMeta<'a> {
   type Inner = FlatbufMeta<'a>;
   #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner { unsafe {
     Self { _tab: flatbuffers::Table::new(buf, loc) }
-  }
+  }}
 }
 
 impl<'a> FlatbufMeta<'a> {
@@ -960,16 +960,16 @@ pub fn size_prefixed_root_as_flatbuf_meta_with_opts<'b, 'o>(
 /// Assumes, without verification, that a buffer of bytes contains a FlatbufMeta and returns it.
 /// # Safety
 /// Callers must trust the given bytes do indeed contain a valid `FlatbufMeta`.
-pub unsafe fn root_as_flatbuf_meta_unchecked(buf: &[u8]) -> FlatbufMeta {
+pub unsafe fn root_as_flatbuf_meta_unchecked(buf: &[u8]) -> FlatbufMeta { unsafe {
   flatbuffers::root_unchecked::<FlatbufMeta>(buf)
-}
+}}
 #[inline]
 /// Assumes, without verification, that a buffer of bytes contains a size prefixed FlatbufMeta and returns it.
 /// # Safety
 /// Callers must trust the given bytes do indeed contain a valid size prefixed `FlatbufMeta`.
-pub unsafe fn size_prefixed_root_as_flatbuf_meta_unchecked(buf: &[u8]) -> FlatbufMeta {
+pub unsafe fn size_prefixed_root_as_flatbuf_meta_unchecked(buf: &[u8]) -> FlatbufMeta { unsafe {
   flatbuffers::size_prefixed_root_unchecked::<FlatbufMeta>(buf)
-}
+}}
 #[inline]
 pub fn finish_flatbuf_meta_buffer<'a, 'b, A: flatbuffers::Allocator + 'a>(
     fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,

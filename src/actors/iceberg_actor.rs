@@ -5,28 +5,27 @@
 // This should be done on a mmap file and the metadata should be stored in Flatbuf.
 
 use actix::{Actor, Handler, Message};
-use crate::actors::broadcast::RegexRule;
 
 pub struct IcebergWriter {
-    table: String,
-    schema: String,
-    partition_fields: Vec<String>,
+    _table: String,
+    _schema: String,
+    _partition_fields: Vec<String>,
 }
 
 impl IcebergWriter {
-    pub fn new(table: String, schema: String, partition_fields: Vec<String>) -> Self {
+    pub fn new(_table: String, _schema: String, _partition_fields: Vec<String>) -> Self {
         IcebergWriter {
-            table,
-            schema,
-            partition_fields,
+            _table,
+            _schema,
+            _partition_fields,
         }
     }
 
     pub fn default() -> Self {
         IcebergWriter {
-            table: "log".to_string(),
-            schema: "schema".to_string(),
-            partition_fields: vec!["service".to_string(), "log_name".to_string()],
+            _table: "log".to_string(),
+            _schema: "schema".to_string(),
+            _partition_fields: vec!["service".to_string(), "log_name".to_string()],
         }
     }
 
@@ -41,7 +40,6 @@ impl Actor for IcebergWriter {
     type Context = actix::Context<Self>;
 }
 
-
 pub struct FlushInstruction;
 
 impl Message for FlushInstruction {
@@ -52,7 +50,7 @@ impl Message for FlushInstruction {
 impl Handler<FlushInstruction> for IcebergWriter {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: FlushInstruction, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: FlushInstruction, _ctx: &mut Self::Context) -> Self::Result {
         todo!()
     }
 }

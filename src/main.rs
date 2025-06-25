@@ -1,6 +1,6 @@
-use poros::config::yaml_reader::ServerType::INJEST;
-use poros::servers::injest_server::InjestServer;
-use poros::servers::server::Server;
+use poros::config::yaml_reader::ServerType::{ALL, INJEST, QUERY};
+use poros::servers::injest_server::injest_server::InjestServer;
+use poros::servers::server::PorosServer;
 use poros::version::print_version;
 use poros::{
     config::yaml_reader::read_configuration,
@@ -12,6 +12,8 @@ use poros::{
 use tracing::info;
 
 use clap::Parser;
+use poros::servers::full_server::full_server::FullServer;
+use poros::servers::query_server::query_server::QueryServer;
 
 /// Simple Rust application demonstrating version display with clap.
 #[derive(Parser, Debug)]
@@ -25,7 +27,7 @@ struct Args {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let args = Args::parse();
+    let _args = Args::parse();
     print_version();
     // TODO: implement log rotation
     let file_writer = FileWriter::new("poros.log");
@@ -33,17 +35,37 @@ async fn main() -> std::io::Result<()> {
     init_subscriber(subscriber);
 
     let config = read_configuration();
-
+    let pool = config.database.connection_pool().await;
+    info!(
+        "Postgres database connection pool: {}",
+        &config.database.database_name
+    );
     match config.server {
         INJEST => {
-            let _ = InjestServer::start_server(&config).await;
+            let injest_server: InjestServer = InjestServer {
+                _shutdown_handler: None,
+                pool: pool.clone(),
+            };
+            let _ = InjestServer::start_server(injest_server, &config).await;
         }
-        _ => {
-            info!("Query server is not implemented yet");
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Query server is not implemented yet",
-            ));
+        QUERY => {
+            let query_server: QueryServer = QueryServer {};
+            let _ = QueryServer::start_server(query_server, &config).await;
+        }
+        ALL => {
+            let injest_server: InjestServer = InjestServer {
+                _shutdown_handler: None,
+                pool: pool.clone(),
+            };
+            let query_server: QueryServer = QueryServer {};
+            let all = FullServer {
+                pool: pool.clone(),
+                query_server: Some(query_server),
+                injest_server: Some(injest_server),
+                injest_server_shutdown_sender: None,
+            };
+
+            let _ = FullServer::start_server(all, &config).await;
         }
     }
     Ok(())

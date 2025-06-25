@@ -4,7 +4,7 @@ use flatbuffers::FlatBufferBuilder;
 
 // Using fully qualified paths for generated Flatbuffers types for clarity
 // This assumes 'wal_schema_generated' is generated into a 'wal' module.
-use crate::actors::broadcast::{Metadata, RecordBatchWrapper};
+use crate::actors::broadcast_actor::{Metadata, RecordBatchWrapper};
 use crate::schema::wal_schema_generated::wal::{
     FlatbufMeta,
     FlatbufMetaArgs,
@@ -54,7 +54,7 @@ pub fn serialize_record_batch_without_schema(record_batch_wrapper: &RecordBatchW
 
 pub fn serialize_record_batch_full_ipc(record_batch: &RecordBatchWrapper) -> Vec<u8> {
     let mut buffer: Vec<u8> = Vec::new();
-    let options = IpcWriteOptions::default();
+    let _options = IpcWriteOptions::default();
 
     // Create a StreamWriter which automatically handles writing the schema header
     // and subsequent data/dictionary messages.

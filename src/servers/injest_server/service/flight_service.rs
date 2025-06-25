@@ -1,4 +1,4 @@
-use crate::actors::broadcast::{Broadcaster, Metadata, RecordBatchWrapper};
+use crate::actors::broadcast_actor::{Broadcaster, Metadata, RecordBatchWrapper};
 use actix::{Addr, dev::Stream};
 use actix_web::web::Bytes;
 use arrow::datatypes::Schema;
@@ -95,7 +95,7 @@ impl FlightService for LogFlightServer {
                     })?;
 
                     let batch_wrapped = RecordBatchWrapper {
-                        key: Metadata {
+                        metadata: Metadata {
                             flight: name.clone().unwrap_or_default(),
                             schema: schema.clone(),
                             buffer_id: 1,
@@ -170,7 +170,7 @@ impl FlightService for LogFlightServer {
                     ticket: Bytes::from(table_name.clone()),
                 };
 
-                let endpoint = arrow_flight::FlightEndpoint {
+                let _endpoint = arrow_flight::FlightEndpoint {
                     ticket: Some(ticket),
                     location: vec![],
                     expiration_time: None,

@@ -7,7 +7,7 @@ use std::io::BufWriter;
 use tracing::info;
 
 use crate::{
-    actors::broadcast::RecordBatchWrapper,
+    actors::broadcast_actor::RecordBatchWrapper,
     utils::transformers::{build_flatbufmeta_with_logmeta, serialize_record_batch_full_ipc},
     wal::writer::writer::write_wal_block,
 };
@@ -48,7 +48,7 @@ impl Handler<RecordBatchWrapper> for WalEntry {
     ) -> Self::Result {
         // Convert the RecordBatchWrapper to layout WalBlockHeader
         //
-        let metadata_bytes = build_flatbufmeta_with_logmeta(&record_batch_wrapper.key);
+        let metadata_bytes = build_flatbufmeta_with_logmeta(&record_batch_wrapper.metadata);
 
         info!("Length of metadata = {:?}", &metadata_bytes.len());
 

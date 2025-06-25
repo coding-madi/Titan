@@ -2,7 +2,7 @@ use tokio::sync::oneshot::Sender;
 
 use crate::config::yaml_reader::Settings;
 
-pub trait Server {
+pub trait PorosServer {
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn configure_routes(config: &Settings)
@@ -10,6 +10,7 @@ pub trait Server {
         Self: Sized;
 
     fn bootstrap_server(
+        self,
         config: &Settings,
     ) -> impl Future<
         Output = Result<
@@ -24,7 +25,7 @@ pub trait Server {
     where
         Self: Sized;
 
-    fn start_server(config: &Settings) -> impl Future<Output = ()> + Send
+    fn start_server(self, config: &Settings) -> impl Future<Output = ()> + Send
     where
         Self: Sized;
 }

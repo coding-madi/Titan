@@ -1,26 +1,13 @@
+use crate::config::database::DatabaseSettings;
+use crate::config::flight::Flight;
 use config::{Config, File};
-use secrecy::SecretString;
 use serde_derive::Deserialize;
-
-#[derive(Deserialize)]
-pub struct DatabaseSettings {
-    pub host: String,
-    pub port: u16,
-    pub username: String,
-    pub password: SecretString, // serde feature needed in secrecy crate
-    pub database_name: String,
-}
 
 #[derive(Deserialize)]
 pub struct Settings {
     pub database: DatabaseSettings,
     pub server: ServerType,
     pub flight: Flight,
-}
-
-#[derive(Deserialize)]
-pub struct Flight {
-    pub address: String,
 }
 
 #[derive(Deserialize)]
