@@ -1,10 +1,12 @@
 database:
   host: localhost
-  port: 5555
-  username: admin
-  password: welcome1
-  database_name: test
+  port: 5432
+  username: myuser
+  password: mypassword
+  database_name: mydatabase
+  max_active_connections: 10
 flight:
-  address: "127.0.0.1:50051"
+  address: 127.0.0.1
+  port: 50051
+server: ALL
 
-server: INJEST

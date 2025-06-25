@@ -1,4 +1,6 @@
-pub mod broadcast;
+pub mod broadcast_actor;
 pub mod iceberg_actor;
-pub mod parsing;
-pub mod wal_writter;
+pub mod parser_actor;
+pub mod wal_actor;
+
+pub mod db_actor;

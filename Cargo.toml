@@ -37,6 +37,13 @@ tempfile = "3.20.0"
 crc32fast = "1.4.2"
 bytemuck = "1.14"
 
+[dependencies.sqlx]
+version = "0.8.6"
+default-features = false
+features = [ "macros", "postgres", "uuid", "chrono", "migrate", "runtime-tokio"]
+
+[dev-dependencies]
+reqwest = "0.12.20"
 
 [build-dependencies]
 flatbuffers = "24.3.25"  # Optional if you use it inside build.rs
