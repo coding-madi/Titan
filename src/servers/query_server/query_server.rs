@@ -1,10 +1,11 @@
 use crate::config::yaml_reader::Settings;
 use crate::exception::server_error::ServerError;
-use crate::servers::query_server::routes::health::health_endpoint;
+use crate::servers::query_server::routes::health::{get_health_endpoint_factory};
 use crate::servers::server::PorosServer;
 use actix_web::{App, HttpServer, web};
 use std::net::TcpListener;
 use std::time::Duration;
+use actix_web::web::ServiceConfig;
 use tokio::signal::ctrl_c;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::Sender;
@@ -16,11 +17,16 @@ pub struct QueryServer {}
 impl PorosServer for QueryServer {
     type Error = ServerError;
 
-    fn configure_routes(_config: &Settings)
+    fn configure_routes(_config: &mut ServiceConfig)
     where
         Self: Sized,
     {
-        todo!()
+        _config
+            .service(
+                web::scope("/ap1/v1")
+                .service(get_health_endpoint_factory())
+            );
+
     }
 
     async fn bootstrap_server(
@@ -43,7 +49,8 @@ impl PorosServer for QueryServer {
                 let server = HttpServer::new(move || {
                     App::new()
                         .wrap(TracingLogger::default())
-                        .route("/health", web::get().to(health_endpoint))
+                        // .route("/health", web::get().to(health_endpoint))
+                        .configure(|config| Self::configure_routes(config))
                 })
                 .listen(listener)?
                 .workers(2)
@@ -89,7 +96,7 @@ impl PorosServer for QueryServer {
 }
 
 fn create_listener(_config: &Settings) -> Result<TcpListener, ServerError> {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("Port busy. Please try again");
+    let listener = TcpListener::bind("127.0.0.1:8888").expect("Port busy. Please try again");
     Ok(listener)
 }
 

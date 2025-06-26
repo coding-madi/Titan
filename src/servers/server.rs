@@ -1,3 +1,4 @@
+use actix_web::web::ServiceConfig;
 use tokio::sync::oneshot::Sender;
 
 use crate::config::yaml_reader::Settings;
@@ -5,7 +6,7 @@ use crate::config::yaml_reader::Settings;
 pub trait PorosServer {
     type Error: std::error::Error + Send + Sync + 'static;
 
-    fn configure_routes(config: &Settings)
+    fn configure_routes(config: & mut ServiceConfig)
     where
         Self: Sized;
 

@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use actix::Actor;
+use actix_web::web::ServiceConfig;
 use arrow_flight::flight_service_server::FlightServiceServer;
 use sqlx::PgPool;
 use tokio::{
@@ -51,7 +52,7 @@ fn get_flight_server_endpoint(config: &Settings) -> SocketAddr {
 impl PorosServer for InjestServer {
     type Error = ServerError;
 
-    fn configure_routes(_config: &Settings)
+    fn configure_routes(_config: &mut ServiceConfig)
     where
         Self: Sized,
     {
