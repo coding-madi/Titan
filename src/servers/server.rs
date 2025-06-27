@@ -6,7 +6,7 @@ use crate::config::yaml_reader::Settings;
 pub trait PorosServer {
     type Error: std::error::Error + Send + Sync + 'static;
 
-    fn configure_routes(config: & mut ServiceConfig)
+    fn configure_routes(config: &mut ServiceConfig)
     where
         Self: Sized;
 

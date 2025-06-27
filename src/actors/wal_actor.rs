@@ -2,10 +2,11 @@
 
 use std::fs::{File, OpenOptions};
 
-use actix::{Actor, Context, Handler};
+use actix::{Actor, Addr, Context, Handler};
 use std::io::BufWriter;
 use tracing::info;
 
+use crate::actors::iceberg_actor::IcebergWriter;
 use crate::{
     actors::broadcast_actor::RecordBatchWrapper,
     utils::transformers::{build_flatbufmeta_with_logmeta, serialize_record_batch_full_ipc},
@@ -14,6 +15,7 @@ use crate::{
 
 pub struct WalEntry {
     pub writer: BufWriter<File>,
+    pub iceberg: Addr<IcebergWriter>,
 }
 
 impl Actor for WalEntry {
@@ -21,7 +23,7 @@ impl Actor for WalEntry {
 }
 
 impl WalEntry {
-    pub fn new() -> Self {
+    pub fn new(iceberg: Addr<IcebergWriter>) -> Self {
         info!("Creating new WAL entry actor");
         let file: File = OpenOptions::new()
             .write(true)
@@ -31,6 +33,7 @@ impl WalEntry {
             .expect("Failed to open WAL entry log file");
         WalEntry {
             writer: BufWriter::new(file),
+            iceberg,
         }
     }
 }

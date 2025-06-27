@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use crate::actors::{
     broadcast_actor::{RecordBatchWrapper, RegexRule},
@@ -12,12 +12,12 @@ use arrow_array::{Array, Datum, ListArray, StringArray};
 pub struct ParsingActor {
     pub patterns: HashMap<String, Pattern>, // key, Pattern
     pub schema: HashMap<String, Schema>,
-    pub log_writer: Arc<Addr<WalEntry>>,
+    pub log_writer: Addr<WalEntry>,
 }
 
 impl ParsingActor {
     #[allow(dead_code)]
-    fn default(log_writer: Arc<Addr<WalEntry>>) -> Self {
+    pub fn default(log_writer: Addr<WalEntry>) -> Self {
         Self {
             patterns: HashMap::new(),
             schema: HashMap::new(),
@@ -26,7 +26,7 @@ impl ParsingActor {
     }
 
     #[allow(dead_code)]
-    fn new(team_id: String, log_writer: Arc<Addr<WalEntry>>) -> Self {
+    pub fn new(team_id: String, log_writer: Addr<WalEntry>) -> Self {
         // Read patterns from database
         let patterns = get_patterns_from_database(&team_id);
         let schema = get_flight_and_schemas(&team_id);
@@ -128,8 +128,7 @@ impl<'a> Handler<RecordBatchWrapper> for ParsingActor {
                 // No matching pattern, choose popular groks
             }
         }
-
-        self.log_writer.do_send(record);
+        self.log_writer.do_send(record)
     }
 }
 

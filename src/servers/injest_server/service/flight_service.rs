@@ -107,7 +107,11 @@ impl FlightService for LogFlightServer {
                     received_batches.push(batch.clone());
                     let _ = self.broadcast_actor.send(batch_wrapped).await;
                     // Print for debug
-                    info!("Batch received for flight: {} | rows: {}", name.clone().unwrap_or_default(), batch.num_rows());
+                    info!(
+                        "Batch received for flight: {} | rows: {}",
+                        name.clone().unwrap_or_default(),
+                        batch.num_rows()
+                    );
                 }
             } else {
                 return Err(Status::failed_precondition("Received data before schema"));
@@ -119,7 +123,8 @@ impl FlightService for LogFlightServer {
         if !received_batches.is_empty() {
             let mut data = self.data.lock().await;
 
-            let entry: &mut Vec<RecordBatch> = data.entry(name.unwrap().clone()).or_insert_with(Vec::new);
+            let entry: &mut Vec<RecordBatch> =
+                data.entry(name.unwrap().clone()).or_insert_with(Vec::new);
             entry.extend(received_batches);
         }
 

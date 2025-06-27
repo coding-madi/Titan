@@ -1,10 +1,8 @@
-use std::net::SocketAddr;
-use std::sync::Arc;
-
-use actix::Actor;
 use actix_web::web::ServiceConfig;
 use arrow_flight::flight_service_server::FlightServiceServer;
 use sqlx::PgPool;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::{
     signal,
     sync::oneshot::{self, Sender},
@@ -13,8 +11,8 @@ use tonic::transport::Server;
 use tracing::info;
 
 use crate::{
-    actors::broadcast_actor::Broadcaster, config::yaml_reader::Settings,
-    exception::server_error::ServerError, servers::server::PorosServer,
+    config::yaml_reader::Settings, exception::server_error::ServerError,
+    servers::server::PorosServer,
 };
 pub struct InjestServer {
     pub pool: PgPool,
@@ -80,8 +78,9 @@ impl PorosServer for InjestServer {
 
             let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
-            let broadcast_actor = Broadcaster::new(2).start();
-            let log_flight_server = LogFlightServer::new(Arc::new(broadcast_actor));
+            let registry = init_actors(config).await;
+            let log_flight_server =
+                LogFlightServer::new(Arc::new(registry.get_broadcaster_actor().clone()));
 
             let server = Server::builder()
                 .max_concurrent_streams(128) // Optional
@@ -137,6 +136,7 @@ impl PorosServer for InjestServer {
     }
 }
 
+use crate::actors::init::init_actors;
 use crate::servers::injest_server::service::flight_service::LogFlightServer;
 use tokio::sync::oneshot::Receiver;
 

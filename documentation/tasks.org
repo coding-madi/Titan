@@ -42,7 +42,9 @@ It should create arrow flight batches and ship it over grpc to collector
 - [ ] Blocking IPs using XDP
 ** TODO Add support for maps to filter data
 ** TODO Datafusion based SQL server
-** TODO Actor models
+** TODO [#A] Actor models
+- [ ] Create a factory for actors instantiation.
+- [ ] Create a Actor registry for long lived actors, to avoid props drilling.
 - [ ] Actor for managing regex patterns
 - [ ] Actor for parsing json and converting into arrow
 - [ ] Explore *RAYON* for parallelism, we need not use actors because json parsing does not hold state.Actor for sequential writing of data
@@ -62,6 +64,13 @@ It should create arrow flight batches and ship it over grpc to collector
 - [ ] ONXX runtimes in different languages.
 -
 
+** TODO Alerting engine
+
+
+** TODO OTEL
+- [ ] Tracing support.
+- [ ] Other signals
+- [ ]
 
 
 * Decisions

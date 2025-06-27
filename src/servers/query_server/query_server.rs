@@ -1,11 +1,11 @@
 use crate::config::yaml_reader::Settings;
 use crate::exception::server_error::ServerError;
-use crate::servers::query_server::routes::health::{get_health_endpoint_factory};
+use crate::servers::query_server::routes::health::get_health_endpoint_factory;
 use crate::servers::server::PorosServer;
+use actix_web::web::ServiceConfig;
 use actix_web::{App, HttpServer, web};
 use std::net::TcpListener;
 use std::time::Duration;
-use actix_web::web::ServiceConfig;
 use tokio::signal::ctrl_c;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::Sender;
@@ -21,12 +21,7 @@ impl PorosServer for QueryServer {
     where
         Self: Sized,
     {
-        _config
-            .service(
-                web::scope("/ap1/v1")
-                .service(get_health_endpoint_factory())
-            );
-
+        _config.service(web::scope("/ap1/v1").service(get_health_endpoint_factory()));
     }
 
     async fn bootstrap_server(

@@ -1,3 +1,4 @@
+pub mod actor_factory_actor;
 pub mod actors;
 pub mod config;
 pub mod exception;

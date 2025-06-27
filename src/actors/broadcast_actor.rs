@@ -1,5 +1,4 @@
 use crate::actors::parser_actor::{ParsingActor, Pattern};
-use crate::actors::wal_actor::WalEntry;
 use actix::Handler;
 use actix::{Actor, Addr, Context, Message};
 use arrow_array::RecordBatch;
@@ -8,39 +7,16 @@ use std::fmt::Display;
 use tracing::trace;
 
 pub struct Broadcaster {
-    pub shards: i8,
     pub parser_registry: Vec<Addr<ParsingActor>>,
-    next_shard_idx: usize, // Index to keep track of the next shard to send messages to
+    pub next_shard_idx: usize, // Index to keep track of the next shard to send messages to
 }
 
 impl Broadcaster {
-    pub fn new(shard_count: i8) -> Self {
-        let mut parser_registry = Vec::with_capacity(shard_count as usize);
-        let wal = WalEntry::new(); // Placeholder for the log writer, should be set to a real actor
-        let wal_address = Arc::new(wal.start()); // Start the WAL actor and get its address
-        for _ in 0..shard_count {
-            let mut map = HashMap::new();
-            let _ = map.insert(
-                String::from("/benchmark/batch_0"),
-                Pattern::Regex(".*".to_string()),
-            );
-            let actor = ParsingActor::start(ParsingActor {
-                patterns: map,                   // Initialize with an empty regex,
-                schema: HashMap::new(),          // Initialize with an empty schema
-                log_writer: wal_address.clone(), // Placeholder for the log writer, should be set to
-            });
-            parser_registry.push(actor);
+    pub fn new(parser_actor: Vec<Addr<ParsingActor>>) -> Broadcaster {
+        Self {
+            next_shard_idx: 0,
+            parser_registry: parser_actor,
         }
-
-        Broadcaster {
-            shards: shard_count, // Default number of shards
-            parser_registry,     // Initialize with an empty vector
-            next_shard_idx: 0,   // Start with the first shard
-        }
-    }
-
-    pub fn default() -> Self {
-        Broadcaster::new(2) // Default to 1 shard
     }
 }
 
@@ -71,7 +47,6 @@ impl Handler<RegexRule> for Broadcaster {
     }
 }
 
-use std::collections::HashMap;
 use std::sync::Arc;
 pub struct RecordBatchWrapper {
     pub metadata: Metadata,
