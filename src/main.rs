@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use clap::Parser;
+use poros::application::actors::db::PoolReady;
 use poros::application::actors::init::init_actors;
 use poros::core::logging::file_writer::FileWriter;
 use poros::core::logging::subscriber::{get_subscribers, init_subscriber};
@@ -31,7 +32,7 @@ async fn main() -> std::io::Result<()> {
     // TODO: implement log rotation
     // Log file appender and tracer configuration
     let file_writer = FileWriter::new("poros.log");
-    let subscriber = get_subscribers("poros", "WARN", file_writer);
+    let subscriber = get_subscribers("poros", "INFO", file_writer);
     init_subscriber(subscriber);
 
     // create a database pool - used by all servers
@@ -43,6 +44,10 @@ async fn main() -> std::io::Result<()> {
     );
 
     let actor_registry: Arc<dyn InjestSystem> = init_actors(&config).await;
+
+    actor_registry
+        .get_db()
+        .do_send(PoolReady { pool: pool.clone() });
 
     match config.server {
         // Flight server initialization

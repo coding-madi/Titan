@@ -23,24 +23,15 @@ impl Actor for Broadcaster {
     type Context = Context<Self>;
 }
 
-#[derive(Debug, Clone)]
-pub struct RegexRule {
-    pub pattern: Pattern,
-    pub key: String,
-    pub field: String,
-}
 
-impl Message for RegexRule {
-    type Result = Result<(), String>;
-}
 
 // We need to initialize the actor and pass the handles to the Query server.
 // The query server will then use these handles to send messages to the regex actors.
 // The regex actors will then process the messages and return results to the query server.
-impl Handler<RegexRule> for Broadcaster {
+impl Handler<RegexRequest> for Broadcaster {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: RegexRule, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
         println!("Received RegexRule: {:?}", msg);
         Ok(())
     }
@@ -48,6 +39,7 @@ impl Handler<RegexRule> for Broadcaster {
 
 use crate::application::actors::parser::{ParsingActor, Pattern};
 use std::sync::Arc;
+use crate::api::http::regex::RegexRequest;
 
 pub struct RecordBatchWrapper {
     pub metadata: Metadata,
@@ -66,7 +58,7 @@ impl Display for Metadata {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Metadata(key: {}, schema: {:?})",
+            "Metadata(key: {}, Schema: {:?})",
             self.flight, self.schema
         )
     }

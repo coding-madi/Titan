@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
-use crate::application::actors::broadcast::{RecordBatchWrapper, RegexRule};
+use crate::application::actors::broadcast::{RecordBatchWrapper};
 use crate::application::actors::wal::WalEntry;
 use actix::{Actor, Addr, Context, Handler};
 use arrow::compute::regexp_match;
 use arrow::datatypes::Schema;
 use arrow_array::{Array, Datum, ListArray, StringArray};
+use crate::api::http::regex::RegexRequest;
 
 pub struct ParsingActor {
     pub patterns: HashMap<String, Pattern>, // key, Pattern
@@ -47,24 +48,24 @@ impl Actor for ParsingActor {
     }
 }
 
-impl Handler<RegexRule> for ParsingActor {
+impl Handler<RegexRequest> for ParsingActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: RegexRule, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
         // Here we would typically compile the regex and store it in the actor's state
         // For now, we just print the message
         println!("Received RegexRule: {:?}", msg);
         // Simulate some processing with the regex
 
-        let value = self.patterns.get(&msg.key);
-        match value {
-            Some(_pattern) => {
-                self.patterns.insert(msg.key.clone(), msg.pattern);
-            }
-            None => {
-                self.patterns.insert(msg.key.clone(), msg.pattern);
-            }
-        }
+        // let value = self.patterns.get(&msg.key);
+        // match value {
+        //     Some(_pattern) => {
+        //         self.patterns.insert(msg.key.clone(), msg.pattern);
+        //     }
+        //     None => {
+        //         self.patterns.insert(msg.key.clone(), msg.pattern);
+        //     }
+        // }
         Ok(())
     }
 }

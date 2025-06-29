@@ -24,7 +24,7 @@ impl IcebergWriter {
     pub fn default() -> Self {
         IcebergWriter {
             _table: "log".to_string(),
-            _schema: "schema".to_string(),
+            _schema: "Schema".to_string(),
             _partition_fields: vec!["service".to_string(), "log_name".to_string()],
         }
     }

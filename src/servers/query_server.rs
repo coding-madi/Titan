@@ -1,9 +1,10 @@
 use crate::api::http::health::get_health_endpoint_factory;
+use crate::api::http::regex::submit_new_pattern_factory;
 use crate::config::yaml_reader::Settings;
 use crate::core::error::exception::server_error::ServerError;
 use crate::platform::actor_factory::InjestSystem;
 use crate::servers::server::PorosServer;
-use actix_web::web::ServiceConfig;
+use actix_web::web::{Data, ServiceConfig};
 use actix_web::{App, HttpServer, web};
 use std::net::TcpListener;
 use std::sync::Arc;
@@ -25,7 +26,11 @@ impl PorosServer for QueryServer {
     where
         Self: Sized,
     {
-        _config.service(web::scope("/ap1/v1").service(get_health_endpoint_factory()));
+        _config.service(
+            web::scope("/api/v1")
+                .service(get_health_endpoint_factory())
+                .service(submit_new_pattern_factory()),
+        );
     }
 
     async fn bootstrap_server(
@@ -43,13 +48,14 @@ impl PorosServer for QueryServer {
         Self: Sized,
     {
         let listener = create_listener(&config);
+        let  actor_registry = self.actor_registry.clone();
         match listener {
             Ok(listener) => {
                 let server = HttpServer::new(move || {
                     App::new()
                         .wrap(TracingLogger::default())
-                        // .route("/health", web::get().to(health_endpoint))
                         .configure(|config| Self::configure_routes(config))
+                        .app_data(Data::new(actor_registry.clone()))
                 })
                 .listen(listener)?
                 .workers(2)

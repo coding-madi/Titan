@@ -14,7 +14,7 @@ use crate::schema::wal_schema_generated::wal::{
     Serialization,
 };
 
-/// Serializes an Arrow RecordBatch into a byte buffer without including the schema.
+/// Serializes an Arrow RecordBatch into a byte buffer without including the Schema.
 ///
 /// This function generates the IPC message and data for dictionaries and the record batch,
 /// then concatenates them into a single `Vec<u8>`.
@@ -56,7 +56,7 @@ pub fn serialize_record_batch_full_ipc(record_batch: &RecordBatchWrapper) -> Vec
     let mut buffer: Vec<u8> = Vec::new();
     let _options = IpcWriteOptions::default();
 
-    // Create a StreamWriter which automatically handles writing the schema header
+    // Create a StreamWriter which automatically handles writing the Schema header
     // and subsequent data/dictionary messages.
     let mut writer = StreamWriter::try_new(&mut buffer, &record_batch.data.schema())
         .expect("Failed to create IPC stream writer");
@@ -74,7 +74,7 @@ pub fn serialize_record_batch_full_ipc(record_batch: &RecordBatchWrapper) -> Vec
 
 /// Returns the current Unix timestamp in microseconds, Coordinated Universal Time (UTC).
 fn current_timestamp_micros_utc() -> u64 {
-    // `timestamp_micros()` returns i64, cast to u64 as per Flatbuffers schema.
+    // `timestamp_micros()` returns i64, cast to u64 as per Flatbuffers Schema.
     Utc::now().timestamp_micros() as u64
 }
 
@@ -101,8 +101,8 @@ pub fn build_flatbufmeta_with_logmeta<'a>(metadata: &Metadata) -> Vec<u8> {
         &mut builder,
         &LogMetaArgs {
             flight_id: flight_id_fb_str,
-            schema_id: 1,       // Example: Fixed schema ID
-            schema_hash: 123,   // Example: Fixed schema hash
+            schema_id: 1,       // Example: Fixed Schema ID
+            schema_hash: 123,   // Example: Fixed Schema hash
             arrow_buffer_id: 1, // Example: Fixed Arrow buffer ID
             service_id: service_id_fb_str,
             partition_fields: None, // No partition fields for this example

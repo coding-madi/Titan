@@ -79,9 +79,7 @@ impl PorosServer for InjestServer {
         async move {
             let flight_address = get_flight_server_endpoint(config);
             let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-            let log_flight_server = LogFlightServer::new(Arc::new(
-                self.actor_registry.get_broadcaster_actor().clone(),
-            ));
+            let log_flight_server = LogFlightServer::new(self.actor_registry.clone());
 
             let server = Server::builder()
                 .max_concurrent_streams(128) // Optional

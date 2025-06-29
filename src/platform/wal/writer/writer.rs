@@ -54,7 +54,7 @@ pub async fn write_wal_block_async(
         .open(&*path) // Deref Arc<String> to &str
         .await?;
 
-    let header = WalBlockHeader {
+    let header: WalBlockHeader = WalBlockHeader {
         magic: *b"WALBLOCK",
         metadata_offset: metadata_offset as u64,
         metadata_length,
@@ -64,8 +64,7 @@ pub async fn write_wal_block_async(
         data_length: data_buf.len() as u64,
         padding: 0, // Padding to align to 64 bytes, can be set later if needed
         reserve_length: reserve_length as u64,
-        total_block_size: (std::mem::size_of::<WalBlockHeader>() + metadata.len() + data_buf.len())
-            as u64,
+        total_block_size: (size_of::<WalBlockHeader>() + metadata.len() + data_buf.len()) as u64,
     };
 
     file.seek(SeekFrom::Start(offset)).await?;
@@ -114,8 +113,7 @@ pub fn write_wal_block(
         data_length: data_buf.len() as u64,
         padding: 0, // Padding to align to 64 bytes, can be set later if needed
         reserve_length: reserve_length as u64,
-        total_block_size: (std::mem::size_of::<WalBlockHeader>() + metadata.len() + data_buf.len())
-            as u64,
+        total_block_size: (size_of::<WalBlockHeader>() + metadata.len() + data_buf.len()) as u64,
     };
 
     // Write header

@@ -1,4 +1,6 @@
 use crate::application::actors::broadcast::{Broadcaster, Metadata, RecordBatchWrapper};
+use crate::application::actors::db::SaveSchema;
+use crate::platform::actor_factory::InjestSystem;
 use actix::{Addr, dev::Stream};
 use actix_web::web::Bytes;
 use arrow::datatypes::Schema;
@@ -21,125 +23,28 @@ use tracing::info;
 
 pub struct LogFlightServer {
     pub data: Arc<Mutex<HashMap<String, Vec<RecordBatch>>>>,
-    pub broadcast_actor: Arc<Addr<Broadcaster>>,
+    pub actor_registry: Arc<dyn InjestSystem>,
 }
 
 impl LogFlightServer {
-    pub fn new(broadcast_actor: Arc<Addr<Broadcaster>>) -> Self {
+    pub fn new(actor_registry: Arc<dyn InjestSystem>) -> Self {
         LogFlightServer {
             data: Arc::new(Mutex::new(HashMap::new())),
-            broadcast_actor: broadcast_actor,
+            actor_registry,
         }
     }
 }
 
 #[tonic::async_trait]
 impl FlightService for LogFlightServer {
-    type DoPutStream = Pin<Box<dyn Stream<Item = Result<PutResult, Status>> + Send>>;
     type HandshakeStream = Pin<Box<dyn Stream<Item = Result<HandshakeResponse, Status>> + Send>>;
-    type ListFlightsStream = Pin<Box<dyn Stream<Item = Result<FlightInfo, Status>> + Send>>;
-    type DoExchangeStream = Pin<Box<dyn Stream<Item = Result<FlightData, Status>> + Send>>;
-    type DoActionStream = Pin<Box<dyn Stream<Item = Result<arrow_flight::Result, Status>> + Send>>;
-    type DoGetStream = Pin<Box<dyn Stream<Item = Result<FlightData, Status>> + Send>>;
-    type ListActionsStream = Pin<Box<dyn Stream<Item = Result<ActionType, Status>> + Send>>;
-
-    // Send data to broacast actor
-    async fn do_put(
-        &self,
-        request: Request<Streaming<FlightData>>,
-    ) -> Result<Response<Self::DoPutStream>, Status> {
-        let mut flight_data_stream = request.into_inner();
-        let mut descriptor_opt: Option<arrow_flight::FlightDescriptor> = None;
-        let mut schema_opt: Option<Arc<Schema>> = None;
-        let mut received_batches: Vec<RecordBatch> = Vec::new();
-        let mut name: Option<String> = Option::None;
-
-        while let Some(flight_data_res) = flight_data_stream.next().await {
-            let flight_data = flight_data_res?; // Automatically handles errors
-
-            // First message may contain descriptor
-            if descriptor_opt.is_none() {
-                if let Some(descriptor) = flight_data.flight_descriptor.clone() {
-                    descriptor_opt = Some(descriptor.clone());
-                    info!("Received flight descriptor: {:?}", descriptor_opt);
-                    name = Option::Some(
-                        descriptor
-                            .path
-                            .get(0)
-                            .ok_or_else(|| {
-                                Status::invalid_argument("Flight descriptor path is empty")
-                            })?
-                            .to_string(),
-                    );
-                }
-            }
-
-            // Try to parse schema if not already parsed
-            if schema_opt.is_none() && !flight_data.data_header.is_empty() {
-                let schema = Schema::try_from(&flight_data).map_err(|e| {
-                    Status::invalid_argument(format!("Failed to parse schema: {}", e))
-                })?;
-                schema_opt = Some(Arc::new(schema));
-                continue; // Schema messages do not contain data
-            }
-
-            // Parse actual RecordBatch
-            if let Some(schema) = &schema_opt {
-                if !flight_data.data_body.is_empty() {
-                    let batch = flight_data_to_arrow_batch(
-                        &flight_data,
-                        schema.clone(),
-                        &Default::default(),
-                    )
-                    .map_err(|e| {
-                        Status::internal(format!("Failed to convert to RecordBatch: {}", e))
-                    })?;
-
-                    let batch_wrapped = RecordBatchWrapper {
-                        metadata: Metadata {
-                            flight: name.clone().unwrap_or_default(),
-                            schema: schema.clone(),
-                            buffer_id: 1,
-                            service_id: name.clone().unwrap_or_default(),
-                        },
-                        data: Arc::new(batch.clone()),
-                    };
-                    // Store batch in received_batches for later insertion into self.data
-                    received_batches.push(batch.clone());
-                    let _ = self.broadcast_actor.send(batch_wrapped).await;
-                    // Print for debug
-                    info!(
-                        "Batch received for flight: {} | rows: {}",
-                        name.clone().unwrap_or_default(),
-                        batch.num_rows()
-                    );
-                }
-            } else {
-                return Err(Status::failed_precondition("Received data before schema"));
-            }
-        }
-
-        // TODO
-        // Combine all the received RecordBatches into a single one
-        // if !received_batches.is_empty() {
-        //     let mut data = self.data.lock().await;
-        //
-        //     let entry: &mut Vec<RecordBatch> =
-        //         data.entry(name.unwrap().clone()).or_insert_with(Vec::new);
-        //     entry.extend(received_batches);
-        // }
-
-        let result_stream = futures::stream::once(async { Ok(PutResult::default()) });
-        Ok(Response::new(Box::pin(result_stream)))
-    }
-
     async fn handshake(
         &self,
         _request: Request<Streaming<HandshakeRequest>>,
     ) -> Result<Response<Self::HandshakeStream>, Status> {
         unimplemented!()
     }
-
+    type ListFlightsStream = Pin<Box<dyn Stream<Item = Result<FlightInfo, Status>> + Send>>;
     async fn list_flights(
         &self,
         _request: Request<Criteria>,
@@ -167,7 +72,7 @@ impl FlightService for LogFlightServer {
                 let schema_ipc = SchemaAsIpc::new(schema.as_ref(), &ipc_options);
 
                 let schema_result = SchemaResult::try_from(schema_ipc)
-                    .map_err(|e| Status::internal(format!("Failed to convert schema: {}", e)))
+                    .map_err(|e| Status::internal(format!("Failed to convert Schema: {}", e)))
                     .unwrap();
 
                 let descriptor = FlightDescriptor::new_path(vec![table_name.clone()]);
@@ -211,7 +116,6 @@ impl FlightService for LogFlightServer {
         );
         Ok(Response::new(Box::pin(output_stream)))
     }
-
     async fn get_flight_info(
         &self,
         _request: Request<FlightDescriptor>,
@@ -230,6 +134,9 @@ impl FlightService for LogFlightServer {
     ) -> Result<Response<SchemaResult>, Status> {
         unimplemented!()
     }
+
+    type DoGetStream = Pin<Box<dyn Stream<Item = Result<FlightData, Status>> + Send>>;
+
     async fn do_get(
         &self,
         _request: Request<Ticket>,
@@ -288,18 +195,133 @@ impl FlightService for LogFlightServer {
         Ok(Response::new(Box::pin(output_stream) as Self::DoGetStream))
     }
 
+    type DoPutStream = Pin<Box<dyn Stream<Item = Result<PutResult, Status>> + Send>>;
+
+    // Send data to broacast actor
+    async fn do_put(
+        &self,
+        request: Request<Streaming<FlightData>>,
+    ) -> Result<Response<Self::DoPutStream>, Status> {
+        let mut flight_data_stream = request.into_inner();
+        let mut descriptor_opt: Option<arrow_flight::FlightDescriptor> = None;
+        let mut schema_opt: Option<Arc<Schema>> = None;
+        let mut received_batches: Vec<RecordBatch> = Vec::new();
+        let mut name: Option<String> = Option::None;
+
+        while let Some(flight_data_res) = flight_data_stream.next().await {
+            let flight_data = flight_data_res?; // Automatically handles errors
+
+            // First message may contain descriptor
+            if descriptor_opt.is_none() {
+                if let Some(descriptor) = flight_data.flight_descriptor.clone() {
+                    descriptor_opt = Some(descriptor.clone());
+                    info!("Received flight descriptor: {:?}", descriptor_opt);
+                    name = Option::Some(
+                        descriptor
+                            .path
+                            .get(0)
+                            .ok_or_else(|| {
+                                Status::invalid_argument("Flight descriptor path is empty")
+                            })?
+                            .to_string(),
+                    );
+                }
+            }
+
+            // Try to parse Schema if not already parsed
+            if schema_opt.is_none() && !flight_data.data_header.is_empty() {
+                let schema = Arc::new(Schema::try_from(&flight_data).map_err(|e| {
+                    Status::invalid_argument(format!("Failed to parse Schema: {}", e))
+                })?);
+                let ipc_options = IpcWriteOptions::default();
+                schema_opt = Some(schema.clone());
+                let schema_ipc = SchemaAsIpc::new(schema.as_ref(), &ipc_options);
+                let schema_result = SchemaResult::try_from(schema_ipc)
+                    .map_err(|e| Status::internal(format!("Failed to convert Schema: {}", e)))
+                    .unwrap();
+                let bytes = schema_result.schema.clone();
+
+                let save_schema = SaveSchema {
+                    flight_name: name.clone().unwrap().to_string(),
+                    schema,
+                    created_at: Default::default(),
+                    updated_at: Default::default(),
+                };
+
+                self.actor_registry.get_db().do_send(save_schema);
+
+                continue; // Schema messages do not contain data
+            }
+
+            // Parse actual RecordBatch
+            if let Some(schema) = &schema_opt {
+                if !flight_data.data_body.is_empty() {
+                    let batch = flight_data_to_arrow_batch(
+                        &flight_data,
+                        schema.clone(),
+                        &Default::default(),
+                    )
+                    .map_err(|e| {
+                        Status::internal(format!("Failed to convert to RecordBatch: {}", e))
+                    })?;
+
+                    let batch_wrapped = RecordBatchWrapper {
+                        metadata: Metadata {
+                            flight: name.clone().unwrap_or_default(),
+                            schema: schema.clone(),
+                            buffer_id: 1,
+                            service_id: name.clone().unwrap_or_default(),
+                        },
+                        data: Arc::new(batch.clone()),
+                    };
+                    // Store batch in received_batches for later insertion into self.data
+                    received_batches.push(batch.clone());
+                    let _ = self
+                        .actor_registry
+                        .get_broadcaster_actor()
+                        .send(batch_wrapped)
+                        .await;
+                    // Print for debug
+                    info!(
+                        "Batch received for flight: {} | rows: {}",
+                        name.clone().unwrap_or_default(),
+                        batch.num_rows()
+                    );
+                }
+            } else {
+                return Err(Status::failed_precondition("Received data before Schema"));
+            }
+        }
+
+        // TODO
+        // Combine all the received RecordBatches into a single one
+        // if !received_batches.is_empty() {
+        //     let mut data = self.data.lock().await;
+        //
+        //     let entry: &mut Vec<RecordBatch> =
+        //         data.entry(name.unwrap().clone()).or_insert_with(Vec::new);
+        //     entry.extend(received_batches);
+        // }
+
+        let result_stream = futures::stream::once(async { Ok(PutResult::default()) });
+        Ok(Response::new(Box::pin(result_stream)))
+    }
+    type DoExchangeStream = Pin<Box<dyn Stream<Item = Result<FlightData, Status>> + Send>>;
     async fn do_exchange(
         &self,
         _request: Request<Streaming<FlightData>>,
     ) -> Result<Response<Self::DoExchangeStream>, Status> {
         unimplemented!()
     }
+    type DoActionStream = Pin<Box<dyn Stream<Item = Result<arrow_flight::Result, Status>> + Send>>;
+
     async fn do_action(
         &self,
         _request: Request<Action>,
     ) -> Result<Response<Self::DoActionStream>, Status> {
         unimplemented!()
     }
+    type ListActionsStream = Pin<Box<dyn Stream<Item = Result<ActionType, Status>> + Send>>;
     async fn list_actions(
         &self,
         _request: Request<Empty>,

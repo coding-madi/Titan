@@ -193,7 +193,7 @@ It should create arrow flight batches and ship it over grpc to collector
 
 We need a write ahead log based file system for 2 reasons.
 
--   Parquet files need to be created and pushed into iceberg schema. This must be batched to avoid small file problems.
+-   Parquet files need to be created and pushed into iceberg Schema. This must be batched to avoid small file problems.
 -   Logs must be durable.
 
 
@@ -312,6 +312,6 @@ However, this approach may be more complex and needs more dilibrations. Recovery
 -   [ ] Metadata should be field extractable, and no incur full serialization. (Flatbuf allows for primitive types to be de-serialized without reading entire payload)
 -   [ ] Need some paddings in the WAL buffer for SIMD accelerations.
 -   [ ] Need some padding in the headers for future explansions.
--   [ ] Need schema evolution options for the Metadata
+-   [ ] Need Schema evolution options for the Metadata
 -   [ ] Need validation scripts for checking block health and checksums for troubleshootings.
 

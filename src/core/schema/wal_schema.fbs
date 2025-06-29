@@ -1,5 +1,5 @@
 // wal.fbs
-// Flexible schema for Write-Ahead Log (WAL) entries using FlatBuffers
+// Flexible Schema for Write-Ahead Log (WAL) entries using FlatBuffers
 
 namespace wal;
 
@@ -18,8 +18,8 @@ table EventMeta {
 /// Metadata specific to a 'Log' type WAL entry.
 /// This typically includes details about the data written to a log segment.
 table LogMeta {
-  schema_id: uint64;   // ID for schema lookup in external registry
-  schema_hash: uint64; // Hash of the Arrow schema (for integrity check)
+  schema_id: uint64;   // ID for Schema lookup in external registry
+  schema_hash: uint64; // Hash of the Arrow Schema (for integrity check)
   flight_id: string; // Renamed to clarify it's an ID for a 'flight' or batch
   arrow_buffer_id: uint64; // A unique identifier for the Arrow buffer within a flight/segment
   service_id: string;
@@ -56,4 +56,4 @@ table FlatbufMeta {
   meta: Metadata; // The specific type of metadata (Event, Log, or Trace)
 }
 
-root_type FlatbufMeta; // Declares FlatbufMeta as the root object type for this schema
+root_type FlatbufMeta; // Declares FlatbufMeta as the root object type for this Schema

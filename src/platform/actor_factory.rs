@@ -5,7 +5,9 @@ use crate::application::actors::parser::{ParsingActor, Pattern};
 use crate::application::actors::wal::WalEntry;
 use crate::config::yaml_reader::Settings;
 use actix::{Actor, Addr};
+use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct ActorFactory;
 
@@ -25,7 +27,7 @@ impl ActorFactory {
             );
             let actor = ParsingActor::start(ParsingActor {
                 patterns: map,          // Initialize with an empty regex,
-                schema: HashMap::new(), // Initialize with an empty schema
+                schema: HashMap::new(), // Initialize with an empty Schema
                 log_writer: wal_actor.clone(),
             });
             list_of_parsers.push(actor);
@@ -68,7 +70,7 @@ pub trait InjestSystem: Sync + Send {
 
 impl InjestSystem for InjestRegistry {
     fn get_db(&self) -> Addr<DbActor> {
-        self.db.clone() // This clone is cheap and not an anti-pattern, in this context.
+        self.db.clone() // This clone is cheap and not an antipattern, in this context.
     }
 
     fn get_parser(&self) -> Vec<Addr<ParsingActor>> {

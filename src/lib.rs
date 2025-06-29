@@ -3,8 +3,8 @@ pub mod application;
 pub mod config;
 pub mod core;
 pub mod platform;
-pub mod version;
 pub mod servers;
+pub mod version;
 
 #[allow(dead_code, unused_imports)] // Apply to the module
 pub mod schema {
