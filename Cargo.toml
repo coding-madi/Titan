@@ -47,3 +47,16 @@ reqwest = "0.12.20"
 
 [build-dependencies]
 flatbuffers = "24.3.25"  # Optional if you use it inside build.rs
+
+# The below configuration provides very small build files
+#[profile.release]
+#strip = true      # Removes debug symbols
+#lto = true        # Link Time Optimization
+#opt-level = "z"   # Optimize for size (instead of speed)
+#codegen-units = 1 # Fewer units = better LTO, smaller binary
+#panic = "abort"   # Removes stack unwinding logic
+
+[profile.release]
+debug = true
+
+
