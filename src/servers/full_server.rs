@@ -1,8 +1,8 @@
 use crate::config::yaml_reader::Settings;
 use crate::core::error::exception::server_error::ServerError;
-use crate::infrastructure::servers::injest_server::InjestServer;
-use crate::infrastructure::servers::query_server::{QueryServer, block_until_shutdown_signal};
-use crate::infrastructure::servers::server::PorosServer;
+use crate::servers::injest_server::InjestServer;
+use crate::servers::query_server::{QueryServer, block_until_shutdown_signal};
+use crate::servers::server::PorosServer;
 use actix_web::web::ServiceConfig;
 use sqlx::PgPool;
 use tokio::sync::oneshot;

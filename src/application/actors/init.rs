@@ -1,5 +1,5 @@
 use crate::config::yaml_reader::Settings;
-use crate::infrastructure::actor_factory::{ActorFactory, InjestRegistry, InjestSystem};
+use crate::platform::actor_factory::{ActorFactory, InjestRegistry, InjestSystem};
 use std::sync::Arc;
 
 pub async fn init_actors(config: &Settings) -> Arc<dyn InjestSystem> {

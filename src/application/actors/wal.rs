@@ -11,7 +11,7 @@ use crate::application::actors::iceberg::IcebergWriter;
 use crate::core::utils::transformers::{
     build_flatbufmeta_with_logmeta, serialize_record_batch_full_ipc,
 };
-use crate::infrastructure::wal::writer::writer::write_wal_block;
+use crate::platform::wal::writer::writer::write_wal_block;
 
 pub struct WalEntry {
     pub writer: BufWriter<File>,

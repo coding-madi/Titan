@@ -1,6 +1,6 @@
 use crate::application::actors::broadcast::RecordBatchWrapper;
 use crate::core::utils::cksum;
-use crate::infrastructure::wal::layout::WalBlockHeader;
+use crate::platform::wal::layout::WalBlockHeader;
 use arrow_ipc::writer::StreamWriter;
 use bytemuck::bytes_of;
 use std::fs::File;

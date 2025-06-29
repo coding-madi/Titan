@@ -1,8 +1,8 @@
 use crate::api::http::health::get_health_endpoint_factory;
 use crate::config::yaml_reader::Settings;
 use crate::core::error::exception::server_error::ServerError;
-use crate::infrastructure::actor_factory::InjestSystem;
-use crate::infrastructure::servers::server::PorosServer;
+use crate::platform::actor_factory::InjestSystem;
+use crate::servers::server::PorosServer;
 use actix_web::web::ServiceConfig;
 use actix_web::{App, HttpServer, web};
 use std::net::TcpListener;

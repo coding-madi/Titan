@@ -8,11 +8,11 @@ use clap::Parser;
 use poros::application::actors::init::init_actors;
 use poros::core::logging::file_writer::FileWriter;
 use poros::core::logging::subscriber::{get_subscribers, init_subscriber};
-use poros::infrastructure::actor_factory::InjestSystem;
-use poros::infrastructure::servers::full_server::FullServer;
-use poros::infrastructure::servers::injest_server::InjestServer;
-use poros::infrastructure::servers::query_server::QueryServer;
-use poros::infrastructure::servers::server::PorosServer;
+use poros::platform::actor_factory::InjestSystem;
+use poros::servers::full_server::FullServer;
+use poros::servers::injest_server::InjestServer;
+use poros::servers::query_server::QueryServer;
+use poros::servers::server::PorosServer;
 
 /// Simple Rust application demonstrating version display with clap.
 #[derive(Parser, Debug)]
