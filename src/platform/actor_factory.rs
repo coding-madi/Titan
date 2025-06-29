@@ -5,9 +5,7 @@ use crate::application::actors::parser::{ParsingActor, Pattern};
 use crate::application::actors::wal::WalEntry;
 use crate::config::yaml_reader::Settings;
 use actix::{Actor, Addr};
-use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 pub struct ActorFactory;
 

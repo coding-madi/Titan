@@ -1,7 +1,7 @@
-use crate::application::actors::broadcast::{Broadcaster, Metadata, RecordBatchWrapper};
+use crate::application::actors::broadcast::{Metadata, RecordBatchWrapper};
 use crate::application::actors::db::SaveSchema;
 use crate::platform::actor_factory::InjestSystem;
-use actix::{Addr, dev::Stream};
+use actix::dev::Stream;
 use actix_web::web::Bytes;
 use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;

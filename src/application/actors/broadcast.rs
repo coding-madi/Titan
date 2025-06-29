@@ -23,8 +23,6 @@ impl Actor for Broadcaster {
     type Context = Context<Self>;
 }
 
-
-
 // We need to initialize the actor and pass the handles to the Query server.
 // The query server will then use these handles to send messages to the regex actors.
 // The regex actors will then process the messages and return results to the query server.
@@ -37,9 +35,9 @@ impl Handler<RegexRequest> for Broadcaster {
     }
 }
 
-use crate::application::actors::parser::{ParsingActor, Pattern};
-use std::sync::Arc;
 use crate::api::http::regex::RegexRequest;
+use crate::application::actors::parser::ParsingActor;
+use std::sync::Arc;
 
 pub struct RecordBatchWrapper {
     pub metadata: Metadata,

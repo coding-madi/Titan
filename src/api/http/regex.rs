@@ -1,10 +1,9 @@
-use std::sync::Arc;
-use actix::Message;
-use crate::api::http::health::health_endpoint;
-use actix_web::{HttpResponse, Resource, Responder, web};
-use actix_web::web::Data;
-use serde_derive::{Deserialize, Serialize};
 use crate::platform::actor_factory::InjestSystem;
+use actix::Message;
+use actix_web::web::Data;
+use actix_web::{HttpResponse, Resource, Responder, web};
+use serde_derive::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegexRequest {
@@ -40,20 +39,21 @@ impl Message for RegexRequest {
     type Result = Result<(), String>;
 }
 
-pub async fn submit_new_pattern(data: Data<Arc<dyn InjestSystem>>,req: web::Json<RegexRequest>) -> impl Responder {
+pub async fn submit_new_pattern(
+    data: Data<Arc<dyn InjestSystem>>,
+    req: web::Json<RegexRequest>,
+) -> impl Responder {
     println!("{:?}", req.pattern);
     let regex_rule = RegexRequest {
         name: req.name.to_string(),
         tenant: req.tenant.to_string(),
         service_id: req.service_id.to_string(),
         log_name: req.log_name.to_string(),
-        pattern: vec![Pattern::Grok(
-            Grok {
-                override_field: None,
-                field: "x".to_string(),
-                pattern_string: ".*".to_string(),
-            }
-        )],
+        pattern: vec![Pattern::Grok(Grok {
+            override_field: None,
+            field: "x".to_string(),
+            pattern_string: ".*".to_string(),
+        })],
     };
     data.get_broadcaster_actor().do_send(regex_rule);
     HttpResponse::Ok().json("{\"status\": \"OK\"}")

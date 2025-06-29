@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use crate::application::actors::broadcast::{RecordBatchWrapper};
+use crate::api::http::regex::RegexRequest;
+use crate::application::actors::broadcast::RecordBatchWrapper;
 use crate::application::actors::wal::WalEntry;
 use actix::{Actor, Addr, Context, Handler};
 use arrow::compute::regexp_match;
 use arrow::datatypes::Schema;
 use arrow_array::{Array, Datum, ListArray, StringArray};
-use crate::api::http::regex::RegexRequest;
 
 pub struct ParsingActor {
     pub patterns: HashMap<String, Pattern>, // key, Pattern

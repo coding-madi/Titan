@@ -48,7 +48,7 @@ impl PorosServer for QueryServer {
         Self: Sized,
     {
         let listener = create_listener(&config);
-        let  actor_registry = self.actor_registry.clone();
+        let actor_registry = self.actor_registry.clone();
         match listener {
             Ok(listener) => {
                 let server = HttpServer::new(move || {

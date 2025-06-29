@@ -2,7 +2,6 @@
 
 use crate::config::database::DatabaseSettings;
 use actix::{Actor, AsyncContext, Context, Handler, Message, spawn};
-use actix_web::body::MessageBody;
 use arrow::ipc::writer::IpcWriteOptions;
 use arrow_flight::{SchemaAsIpc, SchemaResult};
 use sqlx::{Pool, Postgres};
