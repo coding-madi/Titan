@@ -7,6 +7,7 @@ use actix::{Actor, Addr, Context, Handler};
 use arrow::compute::regexp_match;
 use arrow::datatypes::Schema;
 use arrow_array::{Array, Datum, ListArray, StringArray};
+use validator::Validate;
 
 pub struct ParsingActor {
     pub patterns: HashMap<String, Pattern>, // key, Pattern
@@ -52,6 +53,14 @@ impl Handler<RegexRequest> for ParsingActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
+        match msg.validate() {
+            Ok(_) => {
+                println!("Validating Regex for {}", &msg.name);
+            }
+            Err(e) => {
+                println!("{}", "Validation errors".to_string())
+            }
+        }
         // Here we would typically compile the regex and store it in the actor's state
         // For now, we just print the message
         println!("Received RegexRule: {:?}", msg);

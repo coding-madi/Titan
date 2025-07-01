@@ -9,3 +9,4 @@ rs_cd.log
 *.pyc
 *.log
 .idea
+.svg

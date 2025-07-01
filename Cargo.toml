@@ -36,6 +36,8 @@ futures = "0.3.31"
 tempfile = "3.20.0"
 crc32fast = "1.4.2"
 bytemuck = "1.14"
+validator = { version = "0.20.0", features = ["derive"] }
+regex = "1.11.1"
 
 [dependencies.sqlx]
 version = "0.8.6"
