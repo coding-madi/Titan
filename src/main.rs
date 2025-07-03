@@ -7,6 +7,9 @@ use tracing::info;
 use clap::Parser;
 use poros::application::actors::db::PoolReady;
 use poros::application::actors::init::init_actors;
+use poros::core::db::factory::database_factory::{
+    AnyPool, DatabasePool, PostgresPool, SQLitePool, create,
+};
 use poros::core::logging::file_writer::FileWriter;
 use poros::core::logging::subscriber::{get_subscribers, init_subscriber};
 use poros::platform::actor_factory::InjestSystem;
@@ -37,13 +40,18 @@ async fn main() -> std::io::Result<()> {
 
     // create a database pool - used by all servers
     let config = read_configuration();
-    let pool = config.database.connection_pool().await;
+
+    let pool: Box<dyn DatabasePool> = match create(&config).await {
+        AnyPool::Postgres(pg_pool) => Box::new(PostgresPool { pool: pg_pool }),
+        AnyPool::Sqlite(sql_pool) => Box::new(SQLitePool { pool: sql_pool }),
+    };
+
     info!(
         "Postgres database connection pool: {}",
         &config.database.database_name
     );
 
-    let actor_registry: Arc<dyn InjestSystem> = init_actors(&config).await;
+    let actor_registry: Arc<dyn InjestSystem> = init_actors(&config, pool.clone()).await;
 
     actor_registry
         .get_db()

@@ -1,17 +1,17 @@
 use crate::config::yaml_reader::Settings;
+use crate::core::db::factory::database_factory::DatabasePool;
 use crate::core::error::exception::server_error::ServerError;
 use crate::servers::injest_server::InjestServer;
 use crate::servers::query_server::{QueryServer, block_until_shutdown_signal};
 use crate::servers::server::PorosServer;
 use actix_web::web::ServiceConfig;
-use sqlx::PgPool;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::Sender;
 use tracing::info;
 use tracing::log::error;
 
 pub struct FullServer {
-    pub pool: PgPool,
+    pub pool: Box<dyn DatabasePool>,
     pub query_server: Option<QueryServer>,
     pub injest_server: Option<InjestServer>,
     pub _injest_server_shutdown_sender: Option<Sender<()>>,

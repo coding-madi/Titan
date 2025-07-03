@@ -4,12 +4,28 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::{Pool, Postgres};
 #[derive(Deserialize, Clone)]
 pub struct DatabaseSettings {
+    pub database_type: DatabaseType,
     pub host: String,
     pub port: u16,
     pub username: String,
     pub password: SecretString, // serde feature needed in secrecy crate
     pub database_name: String,
     pub max_active_connections: u32,
+}
+
+#[derive(Deserialize, Clone)]
+pub enum DatabaseType {
+    Postgres,
+    Sqlite,
+}
+
+impl DatabaseType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DatabaseType::Postgres => "postgres",
+            DatabaseType::Sqlite => "sqlite",
+        }
+    }
 }
 
 impl DatabaseSettings {

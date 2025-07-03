@@ -29,7 +29,7 @@ impl IcebergWriter {
         }
     }
 
-    pub fn write(&self, data: &[u8]) {
+    pub fn write(&self, _data: &[u8]) {
         // Here we would write the data to the WAL file
         // For now, we just print the data
     }

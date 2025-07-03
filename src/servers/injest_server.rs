@@ -1,6 +1,5 @@
 use actix_web::web::ServiceConfig;
 use arrow_flight::flight_service_server::FlightServiceServer;
-use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::{
@@ -12,7 +11,7 @@ use tracing::info;
 
 pub struct InjestServer {
     pub actor_registry: Arc<dyn InjestSystem>,
-    pub pool: PgPool,
+    pub pool: Box<dyn DatabasePool + Send + Sync>,
     pub _shutdown_handler: Option<Sender<()>>, // Hold the sender, else the sender is dropped and the receiver receives a None value and stops the server. // TODO: add the postgres database connection pool
 }
 
@@ -20,7 +19,7 @@ impl InjestServer {
     pub fn new(
         &self,
         actor_registry: Arc<dyn InjestSystem>,
-        pool: PgPool,
+        pool: Box<dyn DatabasePool>,
         _shutdown_handler: Option<Sender<()>>,
     ) -> Self {
         InjestServer {
@@ -106,7 +105,7 @@ impl PorosServer for InjestServer {
             Ok((
                 Self {
                     actor_registry: self.actor_registry,
-                    pool: self.pool.clone(),
+                    pool: self.pool,
                     _shutdown_handler: None,
                 },
                 server_run_future,
@@ -138,6 +137,7 @@ impl PorosServer for InjestServer {
 
 use crate::api::flight::service::LogFlightServer;
 use crate::config::yaml_reader::Settings;
+use crate::core::db::factory::database_factory::DatabasePool;
 use crate::core::error::exception::server_error::ServerError;
 use crate::platform::actor_factory::InjestSystem;
 use crate::servers::server::PorosServer;

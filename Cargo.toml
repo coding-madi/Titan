@@ -38,11 +38,12 @@ crc32fast = "1.4.2"
 bytemuck = "1.14"
 validator = { version = "0.20.0", features = ["derive"] }
 regex = "1.11.1"
+async-trait = "0.1.88"
 
 [dependencies.sqlx]
 version = "0.8.6"
 default-features = false
-features = [ "macros", "postgres", "uuid", "chrono", "migrate", "runtime-tokio"]
+features = [ "macros", "postgres", "uuid", "chrono", "migrate", "runtime-tokio", "sqlite"]
 
 [dev-dependencies]
 reqwest = "0.12.20"

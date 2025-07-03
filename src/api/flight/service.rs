@@ -205,7 +205,7 @@ impl FlightService for LogFlightServer {
         let mut flight_data_stream = request.into_inner();
         let mut descriptor_opt: Option<arrow_flight::FlightDescriptor> = None;
         let mut schema_opt: Option<Arc<Schema>> = None;
-        let mut received_batches: Vec<RecordBatch> = Vec::new();
+        let received_batches: Vec<RecordBatch> = Vec::new();
         let mut name: Option<String> = Option::None;
 
         while let Some(flight_data_res) = flight_data_stream.next().await {
@@ -239,7 +239,7 @@ impl FlightService for LogFlightServer {
                 let schema_result = SchemaResult::try_from(schema_ipc)
                     .map_err(|e| Status::internal(format!("Failed to convert Schema: {}", e)))
                     .unwrap();
-                let bytes = schema_result.schema.clone();
+                let _bytes = schema_result.schema.clone();
 
                 let save_schema = SaveSchema {
                     flight_name: name.clone().unwrap().to_string(),
@@ -248,8 +248,8 @@ impl FlightService for LogFlightServer {
                     updated_at: Default::default(),
                 };
 
+                // Persist the schema is database
                 self.actor_registry.get_db().do_send(save_schema);
-
                 continue; // Schema messages do not contain data
             }
 
@@ -275,12 +275,11 @@ impl FlightService for LogFlightServer {
                         data: Arc::new(batch.clone()),
                     };
                     // Store batch in received_batches for later insertion into self.data
-                    received_batches.push(batch.clone());
-                    let _ = self
-                        .actor_registry
+                    // received_batches
+                    // .push(batch.clone());
+                    self.actor_registry
                         .get_broadcaster_actor()
-                        .send(batch_wrapped)
-                        .await;
+                        .do_send(batch_wrapped);
                     // Print for debug
                     info!(
                         "Batch received for flight: {} | rows: {}",

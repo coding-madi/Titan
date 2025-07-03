@@ -1,31 +1,24 @@
 // Changed from SyncContext
 
 use crate::config::database::DatabaseSettings;
+use crate::core::db::factory::database_factory::DatabasePool;
 use actix::{Actor, AsyncContext, Context, Handler, Message, spawn};
 use arrow::ipc::writer::IpcWriteOptions;
 use arrow_flight::{SchemaAsIpc, SchemaResult};
-use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 use tonic::Status;
 
 pub struct DbActor {
     database_settings: DatabaseSettings,
-    pool: Option<Pool<Postgres>>,
+    pool: Box<dyn DatabasePool>,
 }
 
 impl DbActor {
-    pub async fn new(database_settings: DatabaseSettings) -> Self {
+    pub async fn new(database_settings: DatabaseSettings, pool: Box<dyn DatabasePool>) -> Self {
         Self {
             database_settings,
-            pool: None,
+            pool,
         }
-    }
-
-    // A helper method to get the pool, assuming it's already initialized
-    pub fn get_pool(&self) -> &Pool<Postgres> {
-        self.pool
-            .as_ref()
-            .expect("Database actor pool not initialized!")
     }
 }
 
@@ -33,17 +26,18 @@ impl Actor for DbActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        // let settings_for_spawn = self.database_settings.clone();
         let address = ctx.address();
-        let settings_for_spawn = self.database_settings.clone();
+        let pool = self.pool.clone(); // ✅ clone the field, not self
         spawn(async move {
-            let pool = settings_for_spawn.connection_pool().await;
-            let _ = address.send(PoolReady { pool: pool.clone() });
+            // let pool = settings_for_spawn.connection_pool().await;
+            let _ = address.send(PoolReady { pool });
         });
     }
 }
 
 pub struct PoolReady {
-    pub pool: Pool<Postgres>,
+    pub pool: Box<dyn DatabasePool + Send + Sync>,
 }
 
 impl Message for PoolReady {
@@ -54,7 +48,7 @@ impl Handler<PoolReady> for DbActor {
     type Result = ();
 
     fn handle(&mut self, msg: PoolReady, _ctx: &mut Self::Context) -> Self::Result {
-        self.pool = Some(msg.pool)
+        self.pool = msg.pool;
     }
 }
 
@@ -86,7 +80,7 @@ pub struct SaveSchema {
 impl Handler<SaveSchema> for DbActor {
     type Result = ();
 
-    fn handle(&mut self, arrow_schema: SaveSchema, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, arrow_schema: SaveSchema, _ctx: &mut Self::Context) -> Self::Result {
         let flight_name = arrow_schema.flight_name;
         let schema = arrow_schema.schema;
         let ipc_options = IpcWriteOptions::default();
@@ -95,21 +89,13 @@ impl Handler<SaveSchema> for DbActor {
             .map_err(|e| Status::internal(format!("Failed to convert Schema: {}", e)))
             .unwrap();
         let bytes = schema_result.schema;
-        let pool = match self.pool {
-            Some(ref pool) => pool.clone(),
-            None => panic!("Database actor pool not initialized!"),
-        };
+
+        let pool_clone = self.pool.clone(); // ✅ this works now
         tokio::spawn(async move {
-            match sqlx::query("INSERT INTO SCHEMA (flight_name, schema, created_at, updated_at) VALUES ($1, $2, $3, $4)")
-                .bind(&flight_name)
-                .bind(&bytes.to_vec())
-                .bind(chrono::Utc::now())
-                .bind(chrono::Utc::now())
-                .execute(&pool)
-                .await
+            match pool_clone.execute_query("INSERT INTO SCHEMA (flight_name, schema, created_at, updated_at) VALUES ($1, $2, $3, $4)").await
             {
                 Ok(_) => println!("Schema saved successfully"),
-                Err(e) => eprintln!("Failed to save schema: {}", e),
+                Err(e) => eprintln!("Failed to save schema:"),
             }
         });
     }

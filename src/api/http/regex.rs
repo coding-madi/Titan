@@ -4,9 +4,9 @@ use actix_web::web::Data;
 use actix_web::{HttpResponse, Resource, Responder, web};
 use serde_derive::{Deserialize, Serialize};
 use std::sync::Arc;
-use validator::{Validate, ValidationError};
+use validator::{Validate, ValidationError, ValidationErrors};
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct RegexRequest {
     #[validate(length(min = 3, message = "Name must be greater than 3 chars"))]
     pub name: String,
@@ -29,9 +29,9 @@ pub enum Pattern {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RegexPattern {
-    override_field: Option<String>,
-    field: String,
-    pattern_string: String,
+    pub override_field: Option<String>,
+    pub field: String,
+    pub pattern_string: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -42,26 +42,32 @@ pub struct GrokPattern {
 }
 
 impl Message for RegexRequest {
-    type Result = Result<(), String>;
+    type Result = Result<(), ValidationErrors>;
 }
 
 pub async fn submit_new_pattern(
     data: Data<Arc<dyn InjestSystem>>,
     req: web::Json<RegexRequest>,
 ) -> impl Responder {
-    let pattern = req.pattern.iter();
+    // let pattern = req.pattern.iter();
+    //
+    // let pattern_vector = pattern.map(|p| p.clone()).collect();
+    //
+    // let regex_rule = RegexRequest {
+    //     name: req.name.to_string(),
+    //     tenant: req.tenant.to_string(),
+    //     service_id: req.service_id.to_string(),
+    //     log_name: req.log_name.to_string(),
+    //     pattern: pattern_vector,
+    // };
 
-    let pattern_vector = pattern.map(|p| p.clone()).collect();
-
-    let regex_rule = RegexRequest {
-        name: req.name.to_string(),
-        tenant: req.tenant.to_string(),
-        service_id: req.service_id.to_string(),
-        log_name: req.log_name.to_string(),
-        pattern: pattern_vector,
-    };
-    data.get_broadcaster_actor().do_send(regex_rule);
-    HttpResponse::Ok().json("{\"status\": \"OK\"}")
+    match validate_regex_pattern(&req.pattern) {
+        Ok(_) => {
+            data.get_broadcaster_actor().do_send(req.into_inner());
+            HttpResponse::Ok().finish()
+        }
+        Err(e) => HttpResponse::BadRequest().json(e),
+    }
 }
 
 pub fn submit_new_pattern_factory() -> Resource {

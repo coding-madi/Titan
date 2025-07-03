@@ -1,9 +1,10 @@
 use crate::application::actors::broadcast::Broadcaster;
 use crate::application::actors::db::DbActor;
 use crate::application::actors::iceberg::IcebergWriter;
-use crate::application::actors::parser::{ParsingActor, Pattern};
+use crate::application::actors::parser::ParsingActor;
 use crate::application::actors::wal::WalEntry;
 use crate::config::yaml_reader::Settings;
+use crate::core::db::factory::database_factory::DatabasePool;
 use actix::{Actor, Addr};
 use std::collections::HashMap;
 
@@ -18,11 +19,8 @@ impl ActorFactory {
     pub fn parser_actor(shards: u8, wal_actor: Addr<WalEntry>) -> Vec<Addr<ParsingActor>> {
         let mut list_of_parsers = vec![];
         for _ in 0..shards {
-            let mut map = HashMap::new();
-            let _ = map.insert(
-                String::from("/benchmark/batch_0"),
-                Pattern::Regex(".*".to_string()),
-            );
+            let map = HashMap::new();
+
             let actor = ParsingActor::start(ParsingActor {
                 patterns: map,          // Initialize with an empty regex,
                 schema: HashMap::new(), // Initialize with an empty Schema
@@ -44,8 +42,8 @@ impl ActorFactory {
     }
 
     // This actor is lazy initialized
-    pub async fn db_actor(config: &Settings) -> Addr<DbActor> {
-        let db_actor = DbActor::new(config.database.clone()).await;
+    pub async fn db_actor(config: &Settings, pool: Box<dyn DatabasePool>) -> Addr<DbActor> {
+        let db_actor = DbActor::new(config.database.clone(), pool).await;
         db_actor.start()
     }
 }

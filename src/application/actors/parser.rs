@@ -1,22 +1,22 @@
 use std::collections::HashMap;
 
-use crate::api::http::regex::RegexRequest;
-use crate::application::actors::broadcast::RecordBatchWrapper;
-use crate::application::actors::wal::WalEntry;
 use actix::{Actor, Addr, Context, Handler};
 use arrow::compute::regexp_match;
 use arrow::datatypes::Schema;
 use arrow_array::{Array, Datum, ListArray, StringArray};
-use validator::Validate;
+use validator::ValidationErrors;
+
+pub(crate) use crate::api::http::regex::{Pattern, RegexRequest};
+use crate::application::actors::broadcast::RecordBatchWrapper;
+use crate::application::actors::wal::WalEntry;
 
 pub struct ParsingActor {
-    pub patterns: HashMap<String, Pattern>, // key, Pattern
-    pub schema: HashMap<String, Schema>,
+    pub patterns: HashMap<String, Vec<Pattern>>, // service_id → patterns
+    pub schema: HashMap<String, Schema>,         // service_id → schema
     pub log_writer: Addr<WalEntry>,
 }
 
 impl ParsingActor {
-    #[allow(dead_code)]
     pub fn default(log_writer: Addr<WalEntry>) -> Self {
         Self {
             patterns: HashMap::new(),
@@ -25,9 +25,7 @@ impl ParsingActor {
         }
     }
 
-    #[allow(dead_code)]
     pub fn new(team_id: String, log_writer: Addr<WalEntry>) -> Self {
-        // Read patterns from database
         let patterns = get_patterns_from_database(&team_id);
         let schema = get_flight_and_schemas(&team_id);
 
@@ -42,113 +40,97 @@ impl ParsingActor {
 impl Actor for ParsingActor {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context)
-    where
-        Self: Actor<Context = Context<Self>>,
-    {
-    }
+    fn started(&mut self, _ctx: &mut Self::Context) {}
 }
 
+// Handle regex rule registration
 impl Handler<RegexRequest> for ParsingActor {
-    type Result = Result<(), String>;
+    type Result = Result<(), ValidationErrors>;
 
     fn handle(&mut self, msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
-        match msg.validate() {
-            Ok(_) => {
-                println!("Validating Regex for {}", &msg.name);
-            }
-            Err(e) => {
-                println!("{}", "Validation errors".to_string())
-            }
-        }
-        // Here we would typically compile the regex and store it in the actor's state
-        // For now, we just print the message
-        println!("Received RegexRule: {:?}", msg);
-        // Simulate some processing with the regex
-
-        // let value = self.patterns.get(&msg.key);
-        // match value {
-        //     Some(_pattern) => {
-        //         self.patterns.insert(msg.key.clone(), msg.pattern);
-        //     }
-        //     None => {
-        //         self.patterns.insert(msg.key.clone(), msg.pattern);
-        //     }
-        // }
+        println!("Received RegexRule in parser: {:?}", msg);
+        self.patterns.insert(msg.service_id, msg.pattern);
         Ok(())
     }
 }
 
-impl<'a> Handler<RecordBatchWrapper> for ParsingActor {
+// Handle incoming data for parsing
+impl Handler<RecordBatchWrapper> for ParsingActor {
     type Result = ();
 
     fn handle(&mut self, record: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
         let service_id = &record.metadata.service_id;
-        // Find if matching regex exists
-        let extract_pattern = self.patterns.get(service_id);
-        match extract_pattern {
-            Some(pattern) => match pattern {
-                // Apply regex at service level
-                Pattern::Regex(match_pattern) => {
-                    let column_name = "event_type";
-                    let column_index = record.data.schema().index_of(&column_name).unwrap();
-                    let text_array = record
-                        .data
-                        .column(column_index)
-                        .as_any()
-                        .downcast_ref::<StringArray>()
-                        .ok_or_else(|| {
-                            arrow::error::ArrowError::ParseError(format!(
-                                "Column '{}' is not a StringArray",
-                                column_name
-                            ))
-                        });
-                    let text_length = text_array.unwrap();
-                    let extracted_scalar = vec![match_pattern.clone(); text_length.len()];
-                    let pattern_array = StringArray::from(extracted_scalar);
 
-                    let matches =
-                        regexp_match(text_length, &pattern_array as &dyn Datum, None).unwrap();
+        let Some(patterns) = self.patterns.get(service_id) else {
+            // No patterns found, forward as-is
+            self.log_writer.do_send(record);
+            return;
+        };
 
-                    println!("Matches for {}", match_pattern);
-
-                    let list_array = matches.as_any().downcast_ref::<ListArray>().unwrap();
-
-                    for i in 0..list_array.len() {
-                        let group_values = list_array.value(i);
-                        let str_array =
-                            group_values.as_any().downcast_ref::<StringArray>().unwrap();
-                        let _groups: Vec<_> =
-                            (0..str_array.len()).map(|i| str_array.value(i)).collect();
-                        // println!("Groups {:?}", groups);
+        for pattern in patterns {
+            match pattern {
+                Pattern::RegexPattern(regex_pattern) => {
+                    if let Err(e) = apply_regex_pattern(&record, regex_pattern) {
+                        eprintln!("Regex application failed: {:?}", e);
                     }
                 }
-                Pattern::LogRegex(_log_level_pattern) => {
-                    let column = "message";
-                    let _column_index = record.data.schema().index_of(column).unwrap();
-                    // Apply regex per log_name
+                Pattern::GrokPattern(_grok) => {
+                    // TODO: Implement Grok parsing if needed
                 }
-                Pattern::NoPattern => {
-                    // do nothing
-                }
-            },
-            None => {
-                // No matching pattern, choose popular groks
             }
         }
-        self.log_writer.do_send(record)
+
+        self.log_writer.do_send(record);
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Pattern {
-    Regex(String),
-    LogRegex(HashMap<String, String>),
-    NoPattern,
+// Apply a single RegexPattern to the "event_type" column
+fn apply_regex_pattern(
+    record: &RecordBatchWrapper,
+    pattern: &crate::api::http::regex::RegexPattern,
+) -> Result<(), String> {
+    let column_name = "event_type";
+
+    let column_index = record
+        .data
+        .schema()
+        .index_of(column_name)
+        .map_err(|e| format!("Column not found '{}': {:?}", column_name, e))?;
+
+    let text_array = record
+        .data
+        .column(column_index)
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .ok_or_else(|| format!("Column '{}' is not a StringArray", column_name))?;
+
+    // Create a pattern array of the same length
+    let pattern_array = StringArray::from(vec![pattern.pattern_string.clone(); text_array.len()]);
+
+    let matches = regexp_match(text_array, &pattern_array as &dyn Datum, None)
+        .map_err(|e| format!("regexp_match error: {:?}", e))?;
+
+    let list_array = matches
+        .as_any()
+        .downcast_ref::<ListArray>()
+        .ok_or("Match result is not a ListArray")?;
+
+    for i in 0..list_array.len() {
+        let group_values = list_array.value(i);
+        let str_array = group_values
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or("Group value is not a StringArray")?;
+
+        let groups: Vec<&str> = (0..str_array.len()).map(|i| str_array.value(i)).collect();
+        println!("Regex groups: {:?}", groups);
+    }
+
+    Ok(())
 }
 
 #[allow(dead_code)]
-fn get_patterns_from_database(_team_id: &String) -> HashMap<String, Pattern> {
+fn get_patterns_from_database(_team_id: &String) -> HashMap<String, Vec<Pattern>> {
     unimplemented!()
 }
 

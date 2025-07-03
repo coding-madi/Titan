@@ -187,7 +187,7 @@ if __name__ == "__main__":
     # --- Send 1 stream with 100 batches (benchmark phase) ---
     batch_descriptor = flight.FlightDescriptor.for_path("/benchmark/single_stream_batches")
     rows_per_batch = 131072
-    num_batches = 1000
+    num_batches = 10
 
     logger.info(f"\n--- Starting benchmark for sending 100 batches via a single Flight stream ---")
 

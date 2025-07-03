@@ -27,10 +27,12 @@ impl Actor for Broadcaster {
 // The query server will then use these handles to send messages to the regex actors.
 // The regex actors will then process the messages and return results to the query server.
 impl Handler<RegexRequest> for Broadcaster {
-    type Result = Result<(), String>;
+    type Result = Result<(), ValidationErrors>;
 
-    fn handle(&mut self, msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
-        println!("Received RegexRule: {:?}", msg);
+    fn handle(&mut self, regex_request: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
+        for i in 0..self.parser_registry.len() {
+            self.parser_registry[i].do_send(regex_request.clone())
+        }
         Ok(())
     }
 }
@@ -38,6 +40,7 @@ impl Handler<RegexRequest> for Broadcaster {
 use crate::api::http::regex::RegexRequest;
 use crate::application::actors::parser::ParsingActor;
 use std::sync::Arc;
+use validator::ValidationErrors;
 
 pub struct RecordBatchWrapper {
     pub metadata: Metadata,
