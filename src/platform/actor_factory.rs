@@ -4,9 +4,10 @@ use crate::application::actors::iceberg::IcebergWriter;
 use crate::application::actors::parser::ParsingActor;
 use crate::application::actors::wal::WalEntry;
 use crate::config::yaml_reader::Settings;
-use crate::core::db::factory::database_factory::DatabasePool;
+use crate::core::db::factory::database_factory::RepositoryProvider;
 use actix::{Actor, Addr};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct ActorFactory;
 
@@ -42,8 +43,8 @@ impl ActorFactory {
     }
 
     // This actor is lazy initialized
-    pub async fn db_actor(config: &Settings, pool: Box<dyn DatabasePool>) -> Addr<DbActor> {
-        let db_actor = DbActor::new(config.database.clone(), pool).await;
+    pub async fn db_actor(config: &Settings, repos: Arc<dyn RepositoryProvider>) -> Addr<DbActor> {
+        let db_actor = DbActor::new(config.database.clone(), repos).await;
         db_actor.start()
     }
 }

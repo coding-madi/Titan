@@ -1,24 +1,22 @@
 // Changed from SyncContext
 
 use crate::config::database::DatabaseSettings;
-use crate::core::db::factory::database_factory::DatabasePool;
+use crate::core::db::factory::database_factory::RepositoryProvider;
+use crate::core::db::repository::Schema;
 use actix::{Actor, AsyncContext, Context, Handler, Message, spawn};
-use arrow::ipc::writer::IpcWriteOptions;
-use arrow_flight::{SchemaAsIpc, SchemaResult};
 use std::sync::Arc;
-use tonic::Status;
+use tracing::log::info;
 
 pub struct DbActor {
-    database_settings: DatabaseSettings,
-    pool: Box<dyn DatabasePool>,
+    repos: Arc<dyn RepositoryProvider>,
 }
 
 impl DbActor {
-    pub async fn new(database_settings: DatabaseSettings, pool: Box<dyn DatabasePool>) -> Self {
-        Self {
-            database_settings,
-            pool,
-        }
+    pub async fn new(
+        _database_settings: DatabaseSettings,
+        repos: Arc<dyn RepositoryProvider>,
+    ) -> Self {
+        Self { repos }
     }
 }
 
@@ -28,27 +26,27 @@ impl Actor for DbActor {
     fn started(&mut self, ctx: &mut Self::Context) {
         // let settings_for_spawn = self.database_settings.clone();
         let address = ctx.address();
-        let pool = self.pool.clone(); // ✅ clone the field, not self
+        let repos = self.repos.clone(); // ✅ clone the field, not self
         spawn(async move {
             // let pool = settings_for_spawn.connection_pool().await;
-            let _ = address.send(PoolReady { pool });
+            let _ = address.send(ReposReady { repos });
         });
     }
 }
 
-pub struct PoolReady {
-    pub pool: Box<dyn DatabasePool + Send + Sync>,
+pub struct ReposReady {
+    pub repos: Arc<dyn RepositoryProvider + Send + Sync>,
 }
 
-impl Message for PoolReady {
+impl Message for ReposReady {
     type Result = ();
 }
 
-impl Handler<PoolReady> for DbActor {
+impl Handler<ReposReady> for DbActor {
     type Result = ();
 
-    fn handle(&mut self, msg: PoolReady, _ctx: &mut Self::Context) -> Self::Result {
-        self.pool = msg.pool;
+    fn handle(&mut self, msg: ReposReady, _ctx: &mut Self::Context) -> Self::Result {
+        self.repos = msg.repos;
     }
 }
 
@@ -81,22 +79,22 @@ impl Handler<SaveSchema> for DbActor {
     type Result = ();
 
     fn handle(&mut self, arrow_schema: SaveSchema, _ctx: &mut Self::Context) -> Self::Result {
+        info!("Inside the database actor:");
         let flight_name = arrow_schema.flight_name;
         let schema = arrow_schema.schema;
-        let ipc_options = IpcWriteOptions::default();
-        let schema_ipc = SchemaAsIpc::new(schema.as_ref(), &ipc_options);
-        let schema_result = SchemaResult::try_from(schema_ipc)
-            .map_err(|e| Status::internal(format!("Failed to convert Schema: {}", e)))
-            .unwrap();
-        let bytes = schema_result.schema;
-
-        let pool_clone = self.pool.clone(); // ✅ this works now
+        let repos = self.repos.clone(); // ✅ this works now
         tokio::spawn(async move {
-            match pool_clone.execute_query("INSERT INTO SCHEMA (flight_name, schema, created_at, updated_at) VALUES ($1, $2, $3, $4)").await
-            {
-                Ok(_) => println!("Schema saved successfully"),
-                Err(e) => eprintln!("Failed to save schema:"),
-            }
+            let schema = Schema {
+                flight_name,
+                schema,
+                created_at: Default::default(),
+                updated_at: Default::default(),
+            };
+            repos
+                .schema_repository()
+                .insert_schema(schema)
+                .await
+                .expect("TODO: panic message");
         });
     }
 }

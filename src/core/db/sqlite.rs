@@ -1,19 +1,38 @@
 use crate::core::db::repository::{Schema, SchemaRepository};
+use arrow_flight::{SchemaAsIpc, SchemaResult};
+use arrow_ipc::writer::IpcWriteOptions;
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 use std::error::Error;
+use tonic::Status;
+use tracing::info;
 
-pub struct Sqlite {
-    sqlite_pool: SqlitePool,
+#[derive(Clone)]
+pub struct SqliteSchemaRepository {
+    pub sqlite_pool: SqlitePool,
 }
 
 #[async_trait]
-impl SchemaRepository for Sqlite {
+impl SchemaRepository for SqliteSchemaRepository {
     async fn insert_schema(&self, schema: Schema) -> Result<(), Box<dyn Error>> {
-        todo!()
+        let ipc_options = IpcWriteOptions::default();
+        let schema_ipc = SchemaAsIpc::new(schema.schema.as_ref(), &ipc_options);
+        let schema_result = SchemaResult::try_from(schema_ipc)
+            .map_err(|e| Status::internal(format!("Failed to convert Schema: {}", e)))
+            .unwrap();
+        let bytes = schema_result.schema.clone().to_vec(); // Vec<u8>
+
+        info!("Received schema: {:?}", schema_result);
+
+        sqlx::query("INSERT INTO schema (flight_name, schema) VALUES (?, ?)")
+            .bind(&schema.flight_name)
+            .bind(bytes)
+            .execute(&self.sqlite_pool)
+            .await?;
+        Ok(())
     }
 
-    async fn get_schema(&self, flight_name: &str) -> Result<Option<Schema>, Box<dyn Error>> {
+    async fn get_schema(&self, _flight_name: &str) -> Result<Option<Schema>, Box<dyn Error>> {
         todo!()
     }
 
@@ -21,7 +40,7 @@ impl SchemaRepository for Sqlite {
         todo!()
     }
 
-    async fn delete_schema(&self, flight_name: &str) -> Result<(), Box<dyn Error>> {
+    async fn delete_schema(&self, _flight_name: &str) -> Result<(), Box<dyn Error>> {
         todo!()
     }
 }

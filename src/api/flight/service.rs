@@ -205,7 +205,6 @@ impl FlightService for LogFlightServer {
         let mut flight_data_stream = request.into_inner();
         let mut descriptor_opt: Option<arrow_flight::FlightDescriptor> = None;
         let mut schema_opt: Option<Arc<Schema>> = None;
-        let received_batches: Vec<RecordBatch> = Vec::new();
         let mut name: Option<String> = Option::None;
 
         while let Some(flight_data_res) = flight_data_stream.next().await {
@@ -233,13 +232,7 @@ impl FlightService for LogFlightServer {
                 let schema = Arc::new(Schema::try_from(&flight_data).map_err(|e| {
                     Status::invalid_argument(format!("Failed to parse Schema: {}", e))
                 })?);
-                let ipc_options = IpcWriteOptions::default();
                 schema_opt = Some(schema.clone());
-                let schema_ipc = SchemaAsIpc::new(schema.as_ref(), &ipc_options);
-                let schema_result = SchemaResult::try_from(schema_ipc)
-                    .map_err(|e| Status::internal(format!("Failed to convert Schema: {}", e)))
-                    .unwrap();
-                let _bytes = schema_result.schema.clone();
 
                 let save_schema = SaveSchema {
                     flight_name: name.clone().unwrap().to_string(),
@@ -274,9 +267,7 @@ impl FlightService for LogFlightServer {
                         },
                         data: Arc::new(batch.clone()),
                     };
-                    // Store batch in received_batches for later insertion into self.data
-                    // received_batches
-                    // .push(batch.clone());
+
                     self.actor_registry
                         .get_broadcaster_actor()
                         .do_send(batch_wrapped);

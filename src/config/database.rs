@@ -1,7 +1,5 @@
 use secrecy::{ExposeSecret, SecretString};
 use serde_derive::Deserialize;
-use sqlx::postgres::PgPoolOptions;
-use sqlx::{Pool, Postgres};
 #[derive(Deserialize, Clone)]
 pub struct DatabaseSettings {
     pub database_type: DatabaseType,
@@ -30,22 +28,20 @@ impl DatabaseType {
 
 impl DatabaseSettings {
     pub fn connection_string(&self) -> String {
-        format!(
-            "postgres://{}:{}@{}:{}/{}",
-            self.username,
-            self.password.expose_secret(),
-            self.host,
-            self.port,
-            self.database_name
-        )
-    }
-
-    pub async fn connection_pool(&self) -> Pool<Postgres> {
-        let connection_string = self.connection_string();
-        PgPoolOptions::new()
-            .max_connections(self.max_active_connections)
-            .connect(connection_string.as_str())
-            .await
-            .expect("Failed to connect to postgres")
+        match self.database_type {
+            DatabaseType::Postgres => {
+                format!(
+                    "postgres://{}:{}@{}:{}/{}",
+                    self.username,
+                    self.password.expose_secret(),
+                    self.host,
+                    self.port,
+                    self.database_name
+                )
+            }
+            DatabaseType::Sqlite => {
+                format!("sqlite:///{}.db", self.database_name)
+            }
+        }
     }
 }

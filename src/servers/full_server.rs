@@ -1,17 +1,18 @@
 use crate::config::yaml_reader::Settings;
-use crate::core::db::factory::database_factory::DatabasePool;
+use crate::core::db::factory::database_factory::RepositoryProvider;
 use crate::core::error::exception::server_error::ServerError;
 use crate::servers::injest_server::InjestServer;
 use crate::servers::query_server::{QueryServer, block_until_shutdown_signal};
 use crate::servers::server::PorosServer;
 use actix_web::web::ServiceConfig;
+use std::sync::Arc;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::Sender;
 use tracing::info;
 use tracing::log::error;
 
 pub struct FullServer {
-    pub pool: Box<dyn DatabasePool>,
+    pub repos: Arc<dyn RepositoryProvider>,
     pub query_server: Option<QueryServer>,
     pub injest_server: Option<InjestServer>,
     pub _injest_server_shutdown_sender: Option<Sender<()>>,
@@ -41,7 +42,7 @@ impl PorosServer for FullServer {
     where
         Self: Sized,
     {
-        let pool = self.pool.clone(); // Clone pool if it needs to be shared
+        let repos = self.repos.clone(); // Clone pool if it needs to be shared
 
         // Bootstrap InjestServer using its own bootstrap_server method
         // You're updating `self.injest_server` and `self.query_server` directly
@@ -137,7 +138,7 @@ impl PorosServer for FullServer {
         };
 
         let bootstrapped_full_server = FullServer {
-            pool, // Uses the 'pool' that was destructured from the original 'self'
+            repos, // Uses the 'pool' that was destructured from the original 'self'
             query_server: Some(query_server_returned),
             injest_server: Some(injest_server_returned),
             _injest_server_shutdown_sender: None,

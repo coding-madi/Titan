@@ -10,9 +10,8 @@ pub struct Schema {
 }
 
 #[async_trait]
-pub trait SchemaRepository {
+pub trait SchemaRepository: Send + Sync {
     async fn insert_schema(&self, schema: Schema) -> Result<(), Box<dyn Error>>;
-
     async fn get_schema(&self, flight_name: &str) -> Result<Option<Schema>, Box<dyn Error>>;
     async fn list_schemas(&self) -> Result<Vec<Schema>, Box<dyn Error>>;
     async fn delete_schema(&self, flight_name: &str) -> Result<(), Box<dyn Error>>;

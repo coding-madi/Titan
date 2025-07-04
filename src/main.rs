@@ -1,15 +1,18 @@
 use poros::config::yaml_reader::ServerType::{ALL, INJEST, QUERY};
-use poros::config::yaml_reader::read_configuration;
+use poros::config::yaml_reader::{Settings, read_configuration};
 use poros::version::print_version;
 use std::sync::Arc;
-use tracing::info;
 
 use clap::Parser;
-use poros::application::actors::db::PoolReady;
+use poros::application::actors::db::ReposReady;
 use poros::application::actors::init::init_actors;
+use poros::config::database::DatabaseType;
 use poros::core::db::factory::database_factory::{
-    AnyPool, DatabasePool, PostgresPool, SQLitePool, create,
+    AnyPool, DatabaseFactory, PostgresRepositoryProvider, RepositoryProvider,
+    SqliteRepositoryProvider,
 };
+use poros::core::db::factory::pg_database_factory::PGDatabaseFactory;
+use poros::core::db::factory::sqlite_database_factory::SqliteDatabaseFactory;
 use poros::core::logging::file_writer::FileWriter;
 use poros::core::logging::subscriber::{get_subscribers, init_subscriber};
 use poros::platform::actor_factory::InjestSystem;
@@ -37,25 +40,15 @@ async fn main() -> std::io::Result<()> {
     let file_writer = FileWriter::new("poros.log");
     let subscriber = get_subscribers("poros", "INFO", file_writer);
     init_subscriber(subscriber);
-
-    // create a database pool - used by all servers
     let config = read_configuration();
 
-    let pool: Box<dyn DatabasePool> = match create(&config).await {
-        AnyPool::Postgres(pg_pool) => Box::new(PostgresPool { pool: pg_pool }),
-        AnyPool::Sqlite(sql_pool) => Box::new(SQLitePool { pool: sql_pool }),
-    };
+    let repositories = init_repositories(&config).await;
 
-    info!(
-        "Postgres database connection pool: {}",
-        &config.database.database_name
-    );
+    let actor_registry: Arc<dyn InjestSystem> = init_actors(&config, repositories.clone()).await;
 
-    let actor_registry: Arc<dyn InjestSystem> = init_actors(&config, pool.clone()).await;
-
-    actor_registry
-        .get_db()
-        .do_send(PoolReady { pool: pool.clone() });
+    actor_registry.get_db().do_send(ReposReady {
+        repos: repositories.clone(),
+    });
 
     match config.server {
         // Flight server initialization
@@ -63,7 +56,7 @@ async fn main() -> std::io::Result<()> {
             let injest_server: InjestServer = InjestServer {
                 actor_registry,
                 _shutdown_handler: None,
-                pool: pool.clone(),
+                repos: repositories.clone(),
             };
             let _ = InjestServer::start_server(injest_server, &config).await;
         }
@@ -79,13 +72,13 @@ async fn main() -> std::io::Result<()> {
             let injest_server: InjestServer = InjestServer {
                 actor_registry: actor_registry.clone(),
                 _shutdown_handler: None,
-                pool: pool.clone(),
+                repos: repositories.clone(),
             };
             let query_server: QueryServer = QueryServer {
                 actor_registry: actor_registry,
             };
             let all = FullServer {
-                pool: pool.clone(),
+                repos: repositories.clone(),
                 query_server: Some(query_server),
                 injest_server: Some(injest_server),
                 _injest_server_shutdown_sender: None,
@@ -95,4 +88,31 @@ async fn main() -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+async fn init_repositories(config: &Settings) -> Arc<dyn RepositoryProvider> {
+    let repositories: Arc<dyn RepositoryProvider> = match config.database.database_type {
+        DatabaseType::Postgres => {
+            let pg_factory = PGDatabaseFactory {};
+            let pool = pg_factory.create_pool(&config).await;
+            match pool {
+                AnyPool::Postgres(pg) => Arc::new(PostgresRepositoryProvider::new(
+                    pg.schema_repository.pool.clone(),
+                )),
+                AnyPool::Sqlite(_) => panic!("Database type mismatch"),
+            }
+        }
+        DatabaseType::Sqlite => {
+            let sqlite_factory = SqliteDatabaseFactory {};
+            let pool = sqlite_factory.create_pool(&config).await;
+            match pool {
+                AnyPool::Postgres(_pg) => panic!("Database type mismatch"),
+                AnyPool::Sqlite(sql) => Arc::new(SqliteRepositoryProvider::new(
+                    sql.schema_repository.sqlite_pool.clone(),
+                )),
+            }
+        }
+    };
+
+    repositories
 }

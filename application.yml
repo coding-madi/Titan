@@ -1,5 +1,5 @@
 database:
-  database_type: Sqlite #[postgres, sqlite]
+  database_type: Postgres #[postgres, sqlite]
   host: localhost
   port: 5432
   username: myuser
