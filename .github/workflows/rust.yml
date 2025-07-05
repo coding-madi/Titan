@@ -21,10 +21,10 @@ jobs:
 
       - name: Install Clang (no sudo)
         run: |
-          apt update
-          apt install -y clang
-          apt install -y lld
-          apt install -y cmake
+          sudo apt update
+          sudo apt install -y clang
+          sudo apt install -y lld
+          sudo apt install -y cmake
           # apt install -y flatbuffers-compiler
           # Clone FlatBuffers repo
           rm -rf flatbuffers
