@@ -1,0 +1,171 @@
+* Simplified
+
+🟦 WAL Block Header (64 bytes)
++----------------------+----------------------------+-------------+
+| Offset (bytes)       | Field                      | Size        |
++----------------------+----------------------------+-------------+
+| 0x00                 | magic ("WALMAGIC")         | 8 bytes     |
+| 0x08                 | metadata_offset            | 8 bytes     |
+| 0x10                 | metadata_length            | 2 bytes     |
+| 0x12                 | checksum                   | 4 bytes     |
+| 0x16                 | reserve_offset             | 8 bytes     |
+| 0x1E                 | reserve_length             | 8 bytes     |
+| 0x26                 | data_offset                | 8 bytes     |
+| 0x2E                 | data_length                | 8 bytes     |
+| 0x36                 | total_block_size           | 8 bytes     |
+| 0x3E                 | padding                    | 2 bytes     |
++----------------------+----------------------------+-------------+
+
+🟨 FlatBuffers Metadata (starts at `metadata_offset`)
++----------------------+----------------------------+-------------+
+| Offset (relative)    | Field                      | Size        |
++----------------------+----------------------------+-------------+
+| +0x00                | version                    | 1 byte      |
+| +0x01                | flags                      | 1 byte      |
+| +0x02                | padding                    | 6 bytes     |
+| +0x08                | timestamp_unix_micros      | 8 bytes     |
+| +0x10                | serialization              | 2 bytes     |
+| +0x12                | padding                    | 6 bytes     |
+| +0x18                | magic_number               | 8 bytes     |
+| +0x20                | meta (union)               | varies      |
++----------------------+----------------------------+-------------+
+
+🟩 Arrow IPC Payload (starts at `data_offset`)
+[ Arrow-formatted RecordBatch stream (length = data_length) ]
+
+🟥 Reserved Area (optional, starts at `reserve_offset`)
+[ Custom binary payload (length = reserve_length) ]
+
+#+begin_src plantuml :file wal_sequence.png
+@startuml
+!pragma layout smetana
+
+actor User as user
+participant "Data Ingestion System" as dis
+participant "WAL Writer" as wal_writer
+participant "WAL File" as wal_file
+participant "PostgreSQL Catalog DB" as postgres_db
+participant "Background Flusher" as flusher
+participant "Data Drainer" as drainer
+participant "Parquet Files" as parquet_files
+participant "Iceberg Table" as iceberg
+participant "Recovery Process" as recovery
+participant "SIMD/mmap Search" as simd_mmap
+
+autonumber
+
+user -> dis: Ingest Data
+activate dis
+dis -> dis: Data parsed
+
+dis -> wal_writer: Send Data to WAL Writer
+activate wal_writer
+wal_writer -> wal_file: Construct File Header (Checksum, etc.)
+note right of wal_writer: Applies to the WAL file itself
+
+wal_writer -> wal_file: Encode Metadata in Flatbuffer\n(offset, length, service, timestamp, etc.)
+note right of wal_writer: Metadata describes the *data* within the WAL
+
+wal_writer -> wal_file: Write Data Sequentially
+deactivate wal_writer
+deactivate dis
+
+' The Background Flusher runs independently and periodically
+activate flusher
+flusher -> wal_file: Periodically fsync/flush data (every 1 sec)
+deactivate flusher
+' Note: The flusher would reactivate repeatedly, this shows one cycle.
+
+dis -> postgres_db: Persist Active File & Recovery State Name
+note right of dis: Schema info is *not* in WAL, but in Postgres DB\n(Schema is in header of first Arrow Flight message)
+
+alt File reaches 4 GB
+    activate drainer
+    drainer -> wal_file: Drain data from WAL file
+    drainer -> parquet_files: Convert to Parquet files
+    parquet_files -> iceberg: Ingest into Iceberg
+    deactivate drainer
+else Normal Operation (file not 4GB yet)
+    note over dis: Continue writing to WAL (implicit re-activation for new data)
+end
+
+... Time passes, potential system restart ...
+
+user -> recovery: Initiate Recovery
+activate recovery
+recovery -> wal_file: Read WAL File
+note right of recovery: All data in WAL is flushed to Iceberg
+
+alt Parallel Recovery
+    recovery -> simd_mmap: Search for Magic Number (SIMD/mmap)
+    activate simd_mmap
+    simd_mmap --> recovery: Return Search Results
+    deactivate simd_mmap
+    note right of recovery: Enables parallel processing
+else Standard Recovery
+    note over recovery: Sequential processing
+end
+
+recovery -> iceberg: Flush Data from WAL to Iceberg
+deactivate recovery
+
+@enduml
+#+end_src
+
+
+* Flow of WAL writes and recovery
+
+#+begin_src plantuml :file wal_flow.png
+@startuml
+start
+
+group Data Ingestion
+    :Data Ingested;
+    :Data Parsed;
+    :Send Data to WAL Writer;
+
+    fork
+        :WAL Writer: Construct File Header;
+        :WAL Writer: Encode Metadata in Flatbuffer;
+        :WAL Writer: Write Data Sequentially to WAL File;
+    fork again
+        :PostgreSQL Catalog DB: Persist Active File & Recovery State Name;
+        note right: Schema information is in Postgres, not WAL.
+    end fork
+
+    if (WAL File Size >= 4 GB?) then (yes)
+        :Data Drainer: Drain Data from WAL File;
+        :Data Drainer: Convert to Parquet Files;
+        :Ingest into Iceberg Table;
+    else (no)
+        ' Implied: continues writing to WAL
+        :Continue writing to WAL;
+    endif
+    ' This represents the continuous nature of the flusher
+    fork
+        :Background Flusher: Periodically fsync/flush WAL (every 1 sec);
+    end fork
+end group
+
+---
+
+group Recovery Process
+    :System Restart / Initiate Recovery;
+    :Recovery Process: Read WAL File;
+
+    if (Parallel Recovery Enabled?) then (yes)
+        :SIMD/mmap Search for Magic Number;
+        note right: For parallel processing.
+    else (no)
+        :Sequential Processing of WAL;
+    endif
+
+    :Recovery Process: Flush All Data from WAL to Iceberg;
+end group
+
+end
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:wal_flow.png]]

@@ -1,0 +1,200 @@
+#+title: Flow Design
+
+
+#+begin_src plantuml :file injest_sequence.png
+@startuml
+!theme mars
+
+title High-Throughput, Low-Latency Log Analysis System: Ingestion & Persistence
+
+actor "Log Agent (N)" as LA
+participant "Flight Server\n(Rust Actix)" as FS
+participant "Broadcast Actor" as BA
+participant "Parsing & Extraction Actor\n(w/ Internal Thread Pool)" as PEA
+participant "Cache Actor" as CA
+participant "Log File Writer Actor" as LFWA
+participant "SSD Iceberg Table Management\n(Rust Background Process)" as SITM
+participant "S3 Iceberg Table Management\n(Spark/Rust Job)" as S3ITM
+
+note over LA, S3ITM
+  **Assumptions:**
+  - Backpressure via bounded channels is implicit.
+  - Data batches/records are passed.
+  - Arrow IPC files are 8GB before rotation.
+  - SSD Iceberg holds ~1 day of data.
+  - S3 Iceberg for long-term archival.
+end note
+
+group Ingestion of Raw Log Data
+    LA -> FS : 1. gRPC Stream (Arrow Flight Client) - Raw Log Batches
+    activate FS
+    FS -> BA : 2. Arrow Batches (bounded channel)
+    activate BA
+end
+
+group Processing, Caching & Hot Persistence
+    BA -> PEA : 3. Arrow Batches (bounded channel)
+    activate PEA
+    note over PEA
+        3.1. Distributes chunks to
+        internal threads/tasks.
+        3.2. Applies SIMD-optimized regex.
+        3.3. Creates structured Arrow RecordBatches.
+    end note
+    PEA -> CA : 4. Structured Arrow RecordBatches (copy)
+    activate CA
+    note over CA
+        4.1. Stores 10GB rolling window.
+        4.2. Evicts oldest data.
+    end note
+    PEA -> LFWA : 5. Structured Arrow RecordBatches (copy)
+    activate LFWA
+    note over LFWA
+        5.1. Appends to current Arrow IPC file on NVMe SSD.
+        5.2. Manages 8GB file rotation.
+    end note
+
+    loop Log File Rotation (approx. every 8GB)
+        LFWA -> LFWA : 6. IPC File reaches 8GB
+        LFWA -> LFWA : 6.1. Closes current IPC file
+        LFWA -> SITM : 7. Async Trigger: "New IPC file ready" (path)
+        deactivate LFWA
+        LFWA -> LFWA : 6.2. Starts new empty IPC file
+        activate LFWA
+    end
+
+    deactivate PEA
+    deactivate BA
+    deactivate FS
+end
+
+group Warm Storage (SSD Iceberg)
+    activate SITM
+    loop As new IPC files are ready
+        SITM -> SITM : 8. Reads IPC file content
+        SITM -> SITM : 8.1. Converts to optimized Parquet files
+        SITM -> SITM : 8.2. Registers Parquet files with Iceberg metadata (on SSD)
+    end
+    note right of SITM
+        Periodically runs compaction jobs
+        (e.g., hourly) to merge smaller
+        Parquet files for efficiency.
+    end note
+    deactivate SITM
+end
+
+group Cold Archival (S3 Iceberg)
+    activate S3ITM
+    S3ITM -> SITM : 9. Nightly/Hourly Push Request
+    activate SITM
+    SITM --> S3ITM : 9.1. Provides older, compacted Parquet files/references
+    deactivate SITM
+    S3ITM -> S3ITM : 10. Moves Parquet files to S3
+    S3ITM -> S3ITM : 10.1. Updates S3 Iceberg table metadata
+    note right of S3ITM
+        Manages long-term retention policies
+        (e.g., deleting data > N days)
+    end note
+    deactivate S3ITM
+end
+
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:injest_sequence.png]]
+
+* Query flow sequence diagram
+
+#+begin_src plantuml :file query_flow.png
+@startuml
+!theme mars
+
+title High-Throughput, Low-Latency Log Analysis System: Querying
+
+participant "Scheduler\n(Rust Actix)" as SCH
+participant "On-Demand Query API\n(Rust Actix Web/gRPC)" as API
+participant "Query Engine Logic" as QEL
+participant "Cache Actor" as CA
+participant "SSD Iceberg Table Management" as SITM
+participant "S3 Iceberg Table Management" as S3ITM
+database "SSD Iceberg Storage" as SSDS
+database "S3 Iceberg Storage" as S3S
+
+note over SCH, S3S
+  **Assumptions:**
+  - DataFusion is the underlying SQL engine for QEL.
+  - Predicate pushdown, SIMD, and early termination are key.
+end note
+
+group Scheduled Queries (e.g., Every 30s)
+    SCH -> CA : 1. Dispatches SQL Query (e.g., "error rate", "top N")
+    activate CA
+    CA --> SCH : 2. Returns Query Results (from in-memory Arrow Batches)
+    deactivate CA
+    note right of SCH
+        Provides near real-time
+        operational metrics.
+    end note
+end
+
+group On-Demand User Queries
+    autonumber 3
+    actor "User/Client" as UC
+    UC -> API : Query Request (SQL Query, e.g., free-text search)
+    activate API
+    API -> QEL : Query Request (SQL Query)
+    activate QEL
+    note over QEL
+        **Query Orchestration & Federation**
+        - Parses SQL query.
+        - Translates to DataFusion plan.
+        - Determines data sources based on time range/query scope.
+    end note
+
+    alt Query involves recent data (e.g., last few hours/1 day)
+        QEL -> CA : DataFusion Query (on Cache)
+        activate CA
+        CA --> QEL : Arrow Batches (zero-copy)
+        deactivate CA
+        opt If query not fully satisfied by Cache
+            QEL -> SITM : DataFusion Query (on SSD Iceberg Table Metadata)
+            activate SITM
+            SITM -> SSDS : Reads Parquet files (filter by service='X' via Predicate Pushdown)
+            activate SSDS
+            SSDS --> SITM : Filtered Parquet data
+            deactivate SSDS
+            SITM --> QEL : Arrow Batches (converted from Parquet)
+            deactivate SITM
+        end
+    else Query involves historical data (e.g., older than 1 day)
+        QEL -> S3ITM : DataFusion Query (on S3 Iceberg Table Metadata)
+        activate S3ITM
+        S3ITM -> S3S : Reads Parquet files (filter by service='X' via Predicate Pushdown)
+        activate S3S
+        S3S --> S3ITM : Filtered Parquet data
+        deactivate S3S
+        S3ITM --> QEL : Arrow Batches (converted from Parquet)
+        deactivate S3ITM
+    end
+
+    note over QEL
+        **Free-Text Search Optimization (Example):**
+        - Predicate pushdown: `service = 'X'`
+          reduces data drastically.
+        - Columnar scan & SIMD-optimized regex
+          on `log_message` (few GBs max).
+        - Early termination: `LIMIT 500` stops
+          scan when enough matches found.
+    end note
+    QEL --> API : Query Results (Arrow RecordBatches / JSON)
+    deactivate QEL
+    API --> UC : Query Results (e.g., JSON response)
+    deactivate API
+end
+
+@enduml
+#+END_SRC
+
+#+RESULTS:
+[[file:query_flow.png]]

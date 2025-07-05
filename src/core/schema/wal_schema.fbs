@@ -1,0 +1,59 @@
+// wal.fbs
+// Flexible Schema for Write-Ahead Log (WAL) entries using FlatBuffers
+
+namespace wal;
+
+/// Defines the serialization format used for the primary data payload
+/// associated with a WAL entry (e.g., the Arrow IPC Data).
+enum Serialization : short {
+  /// Apache Arrow IPC (InterProcess Communication) format.
+  Arrow = 0,
+}
+
+table EventMeta {
+  service_id: string;
+}
+
+
+/// Metadata specific to a 'Log' type WAL entry.
+/// This typically includes details about the data written to a log segment.
+table LogMeta {
+  schema_id: uint64;   // ID for Schema lookup in external registry
+  schema_hash: uint64; // Hash of the Arrow Schema (for integrity check)
+  flight_id: string; // Renamed to clarify it's an ID for a 'flight' or batch
+  arrow_buffer_id: uint64; // A unique identifier for the Arrow buffer within a flight/segment
+  service_id: string;
+  partition_fields: [string]; // List of field names used for partitioning
+}
+
+/// Metadata specific to a 'Trace' type WAL entry.
+/// This typically includes details for distributed tracing or operational insights.
+table TraceMeta {
+  service_id: string;
+  tenant_id: string;
+  timestamp_unix_micros: uint64; // Clarified timestamp unit for precision
+  partition_fields: [string]; // List of field names used for partitioning
+}
+
+/// A union representing the different types of detailed metadata
+/// that a WAL entry can encapsulate. This allows for flexible
+/// and extensible metadata structures without overhead for unused types.
+union Metadata {
+  EventMeta,
+  LogMeta,
+  TraceMeta,
+}
+
+/// The top-level FlatBuffer for the WAL entry's metadata.
+/// This table contains general information about the FlatBuffer payload itself,
+/// and then a union for specific metadata variants.
+table FlatbufMeta {
+  version: uint8 = 1;
+  flags: uint8 = 0;   // Bit flags for various features (e.g., compression, reserved bits)
+  timestamp_unix_micros: uint64; // Timestamp of when this FlatbufMeta was created/logged
+  serialization: Serialization; // The serialization format used for the primary data payload
+  magic_number: [uint8]; // A fixed 64-bit value to quickly identify valid WAL buffers.
+  meta: Metadata; // The specific type of metadata (Event, Log, or Trace)
+}
+
+root_type FlatbufMeta; // Declares FlatbufMeta as the root object type for this Schema

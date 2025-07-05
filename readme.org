@@ -1,0 +1,61 @@
+* Log monitoring
+** Dependencies
+
+*** Linker
+The linking takes most of the time during the development cycle. A faster linker would go a long way.
+
+#+BEGIN_SRC
+sudo yum install lld clang
+#+END_SRC
+
+Add the below linkers to the =.cargo/config.toml= file
+
+
+#+BEGIN_SRC
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "linker=clang", "-C", "link-arg=-fuse-ld=lld"]
+#+END_SRC
+
+*** development tools
+
+Install cargo watch
+
+#+BEGIN_SRC
+cargo install cargo-watch
+#+END_SRC
+
+
+#+BEGIN_SRC
+rustup component add rustfmt
+#+END_SRC
+
+#+BEGIN_SRC
+rustup component add clippy
+#+END_SRC
+
+*** Wal block layout
++-------------------------------+
+| WalBlockHeader (64 bytes)      |
++-------------------------------+
+| FlatBuffers Metadata           |
+| (starts at metadata_offset)    |
+|  + FlatbufMeta root            |
+|    + version (1 byte)          |
+|    + flags (1 byte)            |
+|    + timestamp (8 bytes)       |
+|    + serialization (2 bytes)   |
+|    + magic_number (8 bytes)    |
+|    + meta (union)              |
+|      + EventMeta / LogMeta / TraceMeta |
++-------------------------------+
+| Reserved Area (optional)       |
++-------------------------------+
+| Arrow IPC payload (data)       |
+| (starts at data_offset)        |
++-------------------------------+
+
+* Install the sqlx CLI for migrations
+
+#+begin_src bash
+cargo install --version=0.5.7 sqlx-cli --no-default-features --features postgres
+#+end_src
