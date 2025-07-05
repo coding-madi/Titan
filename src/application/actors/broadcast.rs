@@ -42,6 +42,32 @@ use crate::application::actors::parser::ParsingActor;
 use std::sync::Arc;
 use validator::ValidationErrors;
 
+impl<'a> Handler<RecordBatchWrapper> for Broadcaster {
+    type Result = ();
+
+    fn handle(&mut self, msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
+        if self.parser_registry.is_empty() {
+            eprintln!("No regex handlers available to distribute RecordBatchWrapper.");
+            return;
+        }
+
+        // Get the address of the next shard in a round-robin fashion
+        let current_shard_idx = self.next_shard_idx;
+        let parser_handle = &self.parser_registry[current_shard_idx];
+
+        // Update the index for the next message
+        self.next_shard_idx = (self.next_shard_idx + 1) % self.parser_registry.len();
+
+        // Send the RecordBatch to the selected RegexActor
+        // Use `do_send` for fire-and-forget, or `send().await` if you need to wait for a response
+        trace!(
+            "Dispatched RecordBatchWrapper for key '{}' to shard index {}",
+            &msg.metadata, current_shard_idx
+        );
+        parser_handle.do_send(msg);
+    }
+}
+
 pub struct RecordBatchWrapper {
     pub metadata: Metadata,
     pub data: Arc<RecordBatch>,
@@ -67,30 +93,4 @@ impl Display for Metadata {
 
 impl<'a> Message for RecordBatchWrapper {
     type Result = ();
-}
-
-impl<'a> Handler<RecordBatchWrapper> for Broadcaster {
-    type Result = ();
-
-    fn handle(&mut self, msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
-        if self.parser_registry.is_empty() {
-            eprintln!("No regex handlers available to distribute RecordBatchWrapper.");
-            return;
-        }
-
-        // Get the address of the next shard in a round-robin fashion
-        let current_shard_idx = self.next_shard_idx;
-        let parser_handle = &self.parser_registry[current_shard_idx];
-
-        // Update the index for the next message
-        self.next_shard_idx = (self.next_shard_idx + 1) % self.parser_registry.len();
-
-        // Send the RecordBatch to the selected RegexActor
-        // Use `do_send` for fire-and-forget, or `send().await` if you need to wait for a response
-        trace!(
-            "Dispatched RecordBatchWrapper for key '{}' to shard index {}",
-            &msg.metadata, current_shard_idx
-        );
-        parser_handle.do_send(msg);
-    }
 }

@@ -1,5 +1,6 @@
 use crate::application::actors::broadcast::{Metadata, RecordBatchWrapper};
 use crate::application::actors::db::SaveSchema;
+use crate::application::actors::flight_registry::RegisterFlight;
 use crate::platform::actor_factory::InjestSystem;
 use actix::dev::Stream;
 use actix_web::web::Bytes;
@@ -116,18 +117,21 @@ impl FlightService for LogFlightServer {
         );
         Ok(Response::new(Box::pin(output_stream)))
     }
+
     async fn get_flight_info(
         &self,
         _request: Request<FlightDescriptor>,
     ) -> Result<Response<FlightInfo>, Status> {
         unimplemented!()
     }
+
     async fn poll_flight_info(
         &self,
         _request: Request<FlightDescriptor>,
     ) -> Result<Response<PollInfo>, Status> {
         unimplemented!()
     }
+
     async fn get_schema(
         &self,
         _request: Request<FlightDescriptor>,
@@ -243,6 +247,13 @@ impl FlightService for LogFlightServer {
 
                 // Persist the schema is database
                 self.actor_registry.get_db().do_send(save_schema);
+                self.actor_registry
+                    .get_flight_registry_actor()
+                    .send(RegisterFlight {
+                        team_id: "myteam".to_string(),
+                        flight: name.clone().unwrap().to_string(),
+                    })
+                    .await;
                 continue; // Schema messages do not contain data
             }
 
@@ -282,16 +293,6 @@ impl FlightService for LogFlightServer {
                 return Err(Status::failed_precondition("Received data before Schema"));
             }
         }
-
-        // TODO
-        // Combine all the received RecordBatches into a single one
-        // if !received_batches.is_empty() {
-        //     let mut data = self.data.lock().await;
-        //
-        //     let entry: &mut Vec<RecordBatch> =
-        //         data.entry(name.unwrap().clone()).or_insert_with(Vec::new);
-        //     entry.extend(received_batches);
-        // }
 
         let result_stream = futures::stream::once(async { Ok(PutResult::default()) });
         Ok(Response::new(Box::pin(result_stream)))

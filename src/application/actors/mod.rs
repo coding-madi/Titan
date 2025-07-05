@@ -5,3 +5,5 @@ pub mod iceberg;
 pub mod init;
 pub mod parser;
 pub mod wal;
+
+pub mod flight_registry;

@@ -40,7 +40,7 @@ impl DatabaseSettings {
                 )
             }
             DatabaseType::Sqlite => {
-                format!("sqlite:///{}.db", self.database_name)
+                format!("sqlite://{}.db", self.database_name)
             }
         }
     }

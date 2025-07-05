@@ -1,5 +1,6 @@
 use crate::application::actors::broadcast::Broadcaster;
 use crate::application::actors::db::DbActor;
+use crate::application::actors::flight_registry::FlightRegistry;
 use crate::application::actors::iceberg::IcebergWriter;
 use crate::application::actors::parser::ParsingActor;
 use crate::application::actors::wal::WalEntry;
@@ -47,6 +48,11 @@ impl ActorFactory {
         let db_actor = DbActor::new(config.database.clone(), repos).await;
         db_actor.start()
     }
+
+    pub async fn flight_registry_actor(config: &Settings) -> Addr<FlightRegistry> {
+        let flight_registry_actor = FlightRegistry::new().await;
+        flight_registry_actor.start()
+    }
 }
 
 pub struct InjestRegistry {
@@ -55,6 +61,7 @@ pub struct InjestRegistry {
     pub parser: Vec<Addr<ParsingActor>>, // sharded for performance
     pub wal_actor: Addr<WalEntry>,
     pub iceberg_actor: Addr<IcebergWriter>,
+    pub flight_registry: Addr<FlightRegistry>,
 }
 
 pub trait InjestSystem: Sync + Send {
@@ -63,6 +70,7 @@ pub trait InjestSystem: Sync + Send {
     fn get_wal_actor(&self) -> Addr<WalEntry>;
     fn get_iceberg_actor(&self) -> Addr<IcebergWriter>;
     fn get_broadcaster_actor(&self) -> Addr<Broadcaster>;
+    fn get_flight_registry_actor(&self) -> Addr<FlightRegistry>;
 }
 
 impl InjestSystem for InjestRegistry {
@@ -84,5 +92,9 @@ impl InjestSystem for InjestRegistry {
 
     fn get_broadcaster_actor(&self) -> Addr<Broadcaster> {
         self.broadcaster.clone()
+    }
+
+    fn get_flight_registry_actor(&self) -> Addr<FlightRegistry> {
+        self.flight_registry.clone()
     }
 }

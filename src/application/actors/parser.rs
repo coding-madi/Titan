@@ -4,6 +4,7 @@ use actix::{Actor, Addr, Context, Handler};
 use arrow::compute::regexp_match;
 use arrow::datatypes::Schema;
 use arrow_array::{Array, Datum, ListArray, StringArray};
+use tracing::log::info;
 use validator::ValidationErrors;
 
 pub(crate) use crate::api::http::regex::{Pattern, RegexRequest};
@@ -40,7 +41,9 @@ impl ParsingActor {
 impl Actor for ParsingActor {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {}
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        info!("ParsingActor started")
+    }
 }
 
 // Handle regex rule registration
@@ -49,7 +52,7 @@ impl Handler<RegexRequest> for ParsingActor {
 
     fn handle(&mut self, msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
         println!("Received RegexRule in parser: {:?}", msg);
-        self.patterns.insert(msg.service_id, msg.pattern);
+        self.patterns.insert(msg.flight_id, msg.pattern);
         Ok(())
     }
 }

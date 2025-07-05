@@ -1,5 +1,5 @@
 use crate::api::http::health::get_health_endpoint_factory;
-use crate::api::http::regex::submit_new_pattern_factory;
+use crate::api::http::regex::{get_all_flights_factory, submit_new_pattern_factory};
 use crate::config::yaml_reader::Settings;
 use crate::core::error::exception::server_error::ServerError;
 use crate::platform::actor_factory::InjestSystem;
@@ -29,7 +29,8 @@ impl PorosServer for QueryServer {
         _config.service(
             web::scope("/api/v1")
                 .service(get_health_endpoint_factory())
-                .service(submit_new_pattern_factory()),
+                .service(submit_new_pattern_factory())
+                .service(get_all_flights_factory()),
         );
     }
 
@@ -58,7 +59,7 @@ impl PorosServer for QueryServer {
                         .app_data(Data::new(actor_registry.clone()))
                 })
                 .listen(listener)?
-                .workers(2)
+                .workers(num_cpus::get())
                 .keep_alive(Duration::from_secs(75))
                 .run();
 

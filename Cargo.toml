@@ -39,6 +39,7 @@ bytemuck = "1.14"
 validator = { version = "0.20.0", features = ["derive"] }
 regex = "1.11.1"
 async-trait = "0.1.88"
+num_cpus = "1.17.0"
 
 [dependencies.sqlx]
 version = "0.8.6"

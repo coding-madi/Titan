@@ -10,3 +10,4 @@ rs_cd.log
 *.log
 .idea
 .svg
+*.db

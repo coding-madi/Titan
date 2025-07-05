@@ -153,72 +153,65 @@ class SimpleFlightClient:
 
         return overall_total_bytes_mb, total_time_spent, total_successful_ops, overall_throughput_mbps, overall_rate_ops_per_sec
 
-if __name__ == "__main__":
+import asyncio
+import pyarrow as pa
+import pyarrow.flight as flight
+import logging
+import sys
+import time
+
+async def async_send_batches(client: SimpleFlightClient, batch_descriptor, schema, rows_per_batch, num_batches):
+    # Pre-generate all batches before timing
+    all_batches = []
+    for i in range(num_batches):
+        batch_table = client.generate_batch_table(i, rows_per_batch)
+        # Convert to record batches (Flight expects record batches)
+        all_batches.extend(batch_table.to_batches())
+
+    def blocking_send():
+        writer, reader = client.client.do_put(batch_descriptor, schema)
+        with writer:
+            for batch in all_batches:
+                writer.write_batch(batch)
+        _ = reader.read()
+
+    start_time = time.time()
+    await asyncio.to_thread(blocking_send)
+    elapsed_time = time.time() - start_time
+
+    # Calculate total bytes sent for all batches
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, schema) as stream_writer:
+        for i in range(num_batches):
+            stream_writer.write_table(client.generate_batch_table(i, rows_per_batch))
+    total_bytes = sink.getvalue().size
+
+    throughput = (total_bytes / (1024 * 1024)) / elapsed_time if elapsed_time > 0 else 0
+
+    logging.info(f"\n--- Single Stream Metrics (server upload only) ---")
+    logging.info(f"Total batches sent: {num_batches}")
+    logging.info(f"Total data sent: {total_bytes / (1024 * 1024):.2f} MB")
+    logging.info(f"Elapsed time (server upload): {elapsed_time:.4f} seconds")
+    logging.info(f"Throughput: {throughput:.2f} MB/s")
+
+
+async def main():
     SERVER_HOST = "127.0.0.1"
     SERVER_PORT = 50051
-
     client = SimpleFlightClient(SERVER_HOST, SERVER_PORT)
 
-    # Initial sample data send (same as before)
-    dataset_name_1 = "/my_app/user_sessions"
-    table_1 = pa.Table.from_arrays(
-        [
-            pa.array([1, 2, 3], type=pa.int64()),
-            pa.array(["login", "logout", "purchase"], type=pa.string()),
-            pa.array([time.time()-100, time.time()-50, time.time()], type=pa.float64())
-        ],
-        names=["user_id", "event", "timestamp"]
-    )
-    client.send_data(dataset_name_1, table_1)
-
-    dataset_name_2 = "/reports/daily_sales"
-    table_2 = pa.Table.from_arrays(
-        [
-            pa.array(["A", "B"], type=pa.string()),
-            pa.array([150.75, 200.00], type=pa.float32()),
-        ],
-        names=["product_category", "revenue"]
-    )
-    client.send_data(dataset_name_2, table_2)
-
-    client.list_flights()
-    client.do_get_data("/reports/daily_sales")
-
-    # --- Send 1 stream with 100 batches (benchmark phase) ---
     batch_descriptor = flight.FlightDescriptor.for_path("/benchmark/single_stream_batches")
     rows_per_batch = 131072
     num_batches = 100
 
-    logger.info(f"\n--- Starting benchmark for sending 100 batches via a single Flight stream ---")
+    logging.info(f"\n--- Starting async benchmark for sending 100 batches ---")
 
     schema = client.generate_batch_table(0, rows_per_batch).schema
-    start_time = time.time()
-    
-    try:
-        writer, reader = client.client.do_put(batch_descriptor, schema)
 
-        with writer:
-            for i in range(num_batches):
-                batch_table = client.generate_batch_table(i, rows_per_batch)
-                # Convert to record batch and send it
-                for batch in batch_table.to_batches():
-                    writer.write_batch(batch)
+    await async_send_batches(client, batch_descriptor, schema, rows_per_batch, num_batches)
 
-        _ = reader.read()  # Read any metadata
-        elapsed_time = time.time() - start_time
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout,
+                        format='%(asctime)s - %(levelname)s - %(message)s')
+    asyncio.run(main())
 
-        sink = pa.BufferOutputStream()
-        with pa.ipc.new_stream(sink, schema) as stream_writer:
-            for i in range(num_batches):
-                stream_writer.write_table(client.generate_batch_table(i, rows_per_batch))
-        total_bytes = sink.getvalue().size
-
-        throughput = (total_bytes / (1024 * 1024)) / elapsed_time if elapsed_time > 0 else 0
-
-        logger.info(f"\n--- Single Stream Metrics ---")
-        logger.info(f"Total batches sent: {num_batches}")
-        logger.info(f"Total data sent: {total_bytes / (1024 * 1024):.2f} MB")
-        logger.info(f"Elapsed time: {elapsed_time:.4f} seconds")
-        logger.info(f"Throughput: {throughput:.2f} MB/s")
-    except Exception as e:
-        logger.error(f"Error during single stream benchmark: {e}")

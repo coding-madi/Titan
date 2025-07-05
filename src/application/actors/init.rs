@@ -12,6 +12,7 @@ pub async fn init_actors(
     let parser = ActorFactory::parser_actor(2, wal_actor.clone());
     let broadcaster = ActorFactory::broadcast_actor(parser.clone());
     let db = ActorFactory::db_actor(config, repos).await;
+    let flight_registry = ActorFactory::flight_registry_actor(config).await;
 
     let _actor_registry = InjestRegistry {
         db,
@@ -19,6 +20,7 @@ pub async fn init_actors(
         parser,
         wal_actor,
         iceberg_actor,
+        flight_registry,
     };
     Arc::new(_actor_registry)
 }
