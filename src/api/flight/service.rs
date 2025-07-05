@@ -1,6 +1,6 @@
 use crate::application::actors::broadcast::{Metadata, RecordBatchWrapper};
 use crate::application::actors::db::SaveSchema;
-use crate::application::actors::flight_registry::RegisterFlight;
+use crate::application::actors::flight_registry::{Fields, RegisterFlight};
 use crate::platform::actor_factory::InjestSystem;
 use actix::dev::Stream;
 use actix_web::web::Bytes;
@@ -18,6 +18,7 @@ use futures::stream;
 use futures_util::StreamExt;
 use std::vec;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
+use arrow_schema::DataType;
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
@@ -240,20 +241,29 @@ impl FlightService for LogFlightServer {
 
                 let save_schema = SaveSchema {
                     flight_name: name.clone().unwrap().to_string(),
-                    schema,
+                    schema: schema.clone(),
                     created_at: Default::default(),
                     updated_at: Default::default(),
                 };
 
                 // Persist the schema is database
                 self.actor_registry.get_db().do_send(save_schema);
+                let fields : Vec<Fields>= vec![];
+                for field in schema.fields() {
+                    let field = Fields {
+                        column_name: field.name().to_string(),
+                        data_type: field.data_type().to_string(),
+                    };
+
+                    println!("---");
+                }
                 self.actor_registry
                     .get_flight_registry_actor()
-                    .send(RegisterFlight {
+                    .do_send(RegisterFlight {
                         team_id: "myteam".to_string(),
                         flight: name.clone().unwrap().to_string(),
-                    })
-                    .await;
+                        fields
+                    });
                 continue; // Schema messages do not contain data
             }
 

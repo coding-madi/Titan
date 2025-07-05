@@ -4,7 +4,7 @@ use std::io::Error;
 use tracing::info;
 
 pub struct FlightRegistry {
-    pub flights: HashMap<String, HashSet<String>>,
+    pub flights: HashMap<String, HashMap<String, Vec<Fields>>>,
 }
 
 impl FlightRegistry {
@@ -31,7 +31,7 @@ impl Handler<CheckFlight> for FlightRegistry {
 
     fn handle(&mut self, flight_check: CheckFlight, ctx: &mut Self::Context) -> Self::Result {
         match self.flights.get(flight_check.team_id.as_str()) {
-            Some(team_flights) => Ok(team_flights.contains(flight_check.flight.as_str())),
+            Some(team_flights) => Ok(team_flights.contains_key(flight_check.flight.as_str())),
             None => Err(Error::new(std::io::ErrorKind::NotFound, "Team not found")),
         }
     }
@@ -48,7 +48,10 @@ impl Handler<ListFlights> for FlightRegistry {
 
     fn handle(&mut self, msg: ListFlights, ctx: &mut Self::Context) -> Self::Result {
         match self.flights.get(msg.team_id.as_str()) {
-            Some(team_flights) => Ok(team_flights.clone()),
+            Some(team_flights) => {
+                let flight_names = team_flights.keys().cloned().collect();
+                Ok(flight_names)
+            },
             None => Err(Error::new(std::io::ErrorKind::NotFound, "Team not found")),
         }
     }
@@ -59,6 +62,14 @@ impl Handler<ListFlights> for FlightRegistry {
 pub struct RegisterFlight {
     pub team_id: String,
     pub flight: String,
+    pub fields: Vec<Fields>,
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct Fields {
+    pub column_name: String,
+    pub data_type: String,
 }
 
 impl Handler<RegisterFlight> for FlightRegistry {
@@ -66,9 +77,6 @@ impl Handler<RegisterFlight> for FlightRegistry {
 
     fn handle(&mut self, msg: RegisterFlight, ctx: &mut Self::Context) -> Self::Result {
         info!("Created flight {} for team {}", msg.flight, msg.team_id);
-        self.flights
-            .entry(msg.team_id.clone())
-            .or_insert(HashSet::new())
-            .insert(msg.flight.clone());
+        self.flights.entry(msg.team_id).or_insert(HashMap::new()).insert(msg.flight, msg.fields);
     }
 }
