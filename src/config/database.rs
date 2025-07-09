@@ -1,8 +1,7 @@
-use std::fs::OpenOptions;
-use std::path::Path;
 use secrecy::{ExposeSecret, SecretString};
 use serde_derive::Deserialize;
-use tracing::error;
+use std::fs::OpenOptions;
+use std::path::Path;
 use tracing::log::info;
 
 #[derive(Deserialize, Clone)]
@@ -53,25 +52,25 @@ impl DatabaseSettings {
     }
 }
 
-fn ensure_file_exists(path: &str)  {
+fn ensure_file_exists(path: &str) {
     let file_path = Path::new(path);
 
     if !file_path.exists() {
-        println!("File does not exist. Creating: {}", path);
+        println!("File does not exist. Creating: {path}");
         let file_path_string = file_path.to_str().unwrap();
         // Create the file (write mode creates if missing)
         match OpenOptions::new()
             .write(true)
             .create(true)
-            .open(file_path) {
+            .truncate(true)
+            .open(file_path)
+        {
             Ok(_) => {
                 info!("File created");
-            },
-            Err(e) => {
+            }
+            Err(_e) => {
                 panic!("Database file could not be created {}", &file_path_string);
-
             }
         }
     }
 }
-

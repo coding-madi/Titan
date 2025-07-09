@@ -57,7 +57,7 @@ impl PorosServer for FullServer {
                 (server, shutdown_fut, tx_opt)
             }
             Err(error) => {
-                error!("Failed to bootstrap InjestServer: {:?}", error);
+                error!("Failed to bootstrap InjestServer: {error}");
                 return Err(error); // Return the original ServerError
             }
         };
@@ -71,7 +71,7 @@ impl PorosServer for FullServer {
             }
             Err(error) => {
                 // If QueryServer fails, attempt to shut down InjestServer
-                error!("Failed to bootstrap QueryServer: {:?}", error);
+                error!("Failed to bootstrap QueryServer: {error}");
                 if let Some(tx) = injest_shutdown_tx {
                     let _ = tx.send(()); // Signal InjestServer to shut down
                     info!(
@@ -97,7 +97,7 @@ impl PorosServer for FullServer {
                     match injest_res {
                         Ok(_) => info!("InjestServer future completed successfully."),
                         Err(e) => {
-                            error!("InjestServer future completed with an error: {:?}", e);
+                            error!("InjestServer future completed with an error: {e}");
                             // Propagate the error up
                             return Err(e);
                         },
@@ -107,7 +107,7 @@ impl PorosServer for FullServer {
                     match query_res {
                         Ok(_) => info!("QueryServer future completed successfully."),
                         Err(e) => {
-                            error!("QueryServer future completed with an error: {:?}", e);
+                            error!("QueryServer future completed with an error: {e}");
                             // Propagate the error up
                             return Err(e);
                         },

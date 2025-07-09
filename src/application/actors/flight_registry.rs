@@ -29,7 +29,7 @@ pub struct CheckFlight {
 impl Handler<CheckFlight> for FlightRegistry {
     type Result = Result<bool, Error>;
 
-    fn handle(&mut self, flight_check: CheckFlight, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, flight_check: CheckFlight, _ctx: &mut Self::Context) -> Self::Result {
         match self.flights.get(flight_check.team_id.as_str()) {
             Some(team_flights) => Ok(team_flights.contains_key(flight_check.flight.as_str())),
             None => Err(Error::new(std::io::ErrorKind::NotFound, "Team not found")),
@@ -46,12 +46,12 @@ pub struct ListFlights {
 impl Handler<ListFlights> for FlightRegistry {
     type Result = Result<HashSet<String>, Error>;
 
-    fn handle(&mut self, msg: ListFlights, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ListFlights, _ctx: &mut Self::Context) -> Self::Result {
         match self.flights.get(msg.team_id.as_str()) {
             Some(team_flights) => {
                 let flight_names = team_flights.keys().cloned().collect();
                 Ok(flight_names)
-            },
+            }
             None => Err(Error::new(std::io::ErrorKind::NotFound, "Team not found")),
         }
     }
@@ -75,8 +75,11 @@ pub struct Fields {
 impl Handler<RegisterFlight> for FlightRegistry {
     type Result = ();
 
-    fn handle(&mut self, msg: RegisterFlight, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RegisterFlight, _ctx: &mut Self::Context) -> Self::Result {
         info!("Created flight {} for team {}", msg.flight, msg.team_id);
-        self.flights.entry(msg.team_id).or_insert(HashMap::new()).insert(msg.flight, msg.fields);
+        self.flights
+            .entry(msg.team_id)
+            .or_default()
+            .insert(msg.flight, msg.fields);
     }
 }

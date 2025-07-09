@@ -1,18 +1,12 @@
 use poros::config::yaml_reader::ServerType::{ALL, INJEST, QUERY};
-use poros::config::yaml_reader::{Settings, read_configuration};
+use poros::config::yaml_reader::read_configuration;
 use poros::version::print_version;
 use std::sync::Arc;
 
 use clap::Parser;
 use poros::application::actors::db::ReposReady;
 use poros::application::actors::init::init_actors;
-use poros::config::database::DatabaseType;
-use poros::core::db::factory::database_factory::{
-    AnyPool, DatabaseFactory, PostgresRepositoryProvider, RepositoryProvider,
-    SqliteRepositoryProvider,
-};
-use poros::core::db::factory::pg_database_factory::PGDatabaseFactory;
-use poros::core::db::factory::sqlite_database_factory::SqliteDatabaseFactory;
+use poros::core::db::init_repositories;
 use poros::core::logging::file_writer::FileWriter;
 use poros::core::logging::subscriber::{get_subscribers, init_subscriber};
 use poros::platform::actor_factory::InjestSystem;
@@ -53,7 +47,7 @@ async fn main() -> std::io::Result<()> {
     match config.server {
         // Flight server initialization
         INJEST => {
-            let injest_server: InjestServer = InjestServer {
+            let injest_server = InjestServer {
                 actor_registry,
                 _shutdown_handler: None,
                 repos: repositories.clone(),
@@ -62,9 +56,7 @@ async fn main() -> std::io::Result<()> {
         }
         // Query server initialization
         QUERY => {
-            let query_server: QueryServer = QueryServer {
-                actor_registry: actor_registry,
-            };
+            let query_server = QueryServer { actor_registry };
             let _ = QueryServer::start_server(query_server, &config).await;
         }
         // Both query and flight servers initialization
@@ -74,9 +66,7 @@ async fn main() -> std::io::Result<()> {
                 _shutdown_handler: None,
                 repos: repositories.clone(),
             };
-            let query_server: QueryServer = QueryServer {
-                actor_registry: actor_registry,
-            };
+            let query_server: QueryServer = QueryServer { actor_registry };
             let all = FullServer {
                 repos: repositories.clone(),
                 query_server: Some(query_server),
@@ -88,31 +78,4 @@ async fn main() -> std::io::Result<()> {
         }
     }
     Ok(())
-}
-
-async fn init_repositories(config: &Settings) -> Arc<dyn RepositoryProvider> {
-    let repositories: Arc<dyn RepositoryProvider> = match config.database.database_type {
-        DatabaseType::Postgres => {
-            let pg_factory = PGDatabaseFactory {};
-            let pool = pg_factory.create_pool(&config).await;
-            match pool {
-                AnyPool::Postgres(pg) => Arc::new(PostgresRepositoryProvider::new(
-                    pg.schema_repository.pool.clone(),
-                )),
-                AnyPool::Sqlite(_) => panic!("Database type mismatch"),
-            }
-        }
-        DatabaseType::Sqlite => {
-            let sqlite_factory = SqliteDatabaseFactory {};
-            let pool = sqlite_factory.create_pool(&config).await;
-            match pool {
-                AnyPool::Postgres(_pg) => panic!("Database type mismatch"),
-                AnyPool::Sqlite(sql) => Arc::new(SqliteRepositoryProvider::new(
-                    sql.schema_repository.sqlite_pool.clone(),
-                )),
-            }
-        }
-    };
-
-    repositories
 }

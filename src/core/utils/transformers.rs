@@ -85,7 +85,7 @@ fn current_timestamp_micros_utc() -> u64 {
 ///
 /// # Arguments
 /// * `metadata` - A reference to the application-specific `Metadata` struct
-///                containing flight and service IDs.
+///  containing flight and service IDs.
 ///
 /// # Returns
 /// A `Vec<u8>` containing the serialized FlatbufMeta.

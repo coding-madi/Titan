@@ -26,7 +26,6 @@ impl WalEntry {
     pub fn new(iceberg: Addr<IcebergWriter>) -> Self {
         info!("Creating new WAL entry actor");
         let file: File = OpenOptions::new()
-            .write(true)
             .create(true)
             .append(true)
             .open("/tmp/wal_entry.log")

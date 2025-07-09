@@ -22,6 +22,7 @@ secrecy = { version = "0.10.3", features = ["serde"] }
 # serializers
 serde = "1.0.219"
 serde_derive = "1.0.219"
+serde_json = "1.0.140"
 config = { version = "0.15.11", features = ["yaml"] } # read yaml, json file
 clap = { version = "4", features = ["derive"] } # Use the latest clap version (e.g., "4")
 flatbuffers = "24.3.25"  # Optional if you use it inside build.rs
@@ -40,6 +41,9 @@ validator = { version = "0.20.0", features = ["derive"] }
 regex = "1.11.1"
 async-trait = "0.1.88"
 num_cpus = "1.17.0"
+utoipa = {  version = "5.4.0" , features = ["openapi_extensions", "actix_extras"]}
+utoipa-redoc = { version = "6", features = ["actix-web"] }
+utoipa-swagger-ui = { version = "9", features = ["actix-web"] }
 
 [dependencies.sqlx]
 version = "0.8.6"

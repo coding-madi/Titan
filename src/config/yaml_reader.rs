@@ -1,6 +1,6 @@
 use crate::config::database::DatabaseSettings;
 use crate::config::flight::Flight;
-use config::{Config, File};
+use config::{Config, Environment, File};
 use serde_derive::Deserialize;
 
 #[derive(Deserialize)]
@@ -20,9 +20,9 @@ pub enum ServerType {
 pub fn read_configuration() -> Settings {
     let config = Config::builder()
         .add_source(File::with_name("application.yml"))
+        .add_source(Environment::with_prefix("APP").separator("__"))
         .build()
         .unwrap();
 
-    let config = config.try_deserialize().unwrap();
-    config
+    config.try_deserialize().unwrap()
 }

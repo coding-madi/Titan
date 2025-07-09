@@ -126,7 +126,7 @@ fn apply_regex_pattern(
             .ok_or("Group value is not a StringArray")?;
 
         let groups: Vec<&str> = (0..str_array.len()).map(|i| str_array.value(i)).collect();
-        println!("Regex groups: {:?}", groups);
+        println!("Regex groups: {groups:?}");
     }
 
     Ok(())

@@ -2,7 +2,11 @@
 
 // @generated
 
+use core::cmp::Ordering;
+use core::mem;
+
 extern crate flatbuffers;
+use self::flatbuffers::{EndianScalar, Follow};
 
 #[allow(unused_imports, dead_code)]
 pub mod wal {
@@ -64,10 +68,8 @@ pub mod wal {
         type Inner = Self;
         #[inline]
         unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-            unsafe {
-                let b = flatbuffers::read_scalar_at::<i16>(buf, loc);
-                Self(b)
-            }
+            let b = flatbuffers::read_scalar_at::<i16>(buf, loc);
+            Self(b)
         }
     }
 
@@ -75,9 +77,7 @@ pub mod wal {
         type Output = Serialization;
         #[inline]
         unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-            unsafe {
-                flatbuffers::emplace_scalar::<i16>(dst, self.0);
-            }
+            flatbuffers::emplace_scalar::<i16>(dst, self.0);
         }
     }
 
@@ -170,10 +170,8 @@ pub mod wal {
         type Inner = Self;
         #[inline]
         unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-            unsafe {
-                let b = flatbuffers::read_scalar_at::<u8>(buf, loc);
-                Self(b)
-            }
+            let b = flatbuffers::read_scalar_at::<u8>(buf, loc);
+            Self(b)
         }
     }
 
@@ -181,9 +179,7 @@ pub mod wal {
         type Output = Metadata;
         #[inline]
         unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-            unsafe {
-                flatbuffers::emplace_scalar::<u8>(dst, self.0);
-            }
+            flatbuffers::emplace_scalar::<u8>(dst, self.0);
         }
     }
 
@@ -226,10 +222,8 @@ pub mod wal {
         type Inner = EventMeta<'a>;
         #[inline]
         unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-            unsafe {
-                Self {
-                    _tab: flatbuffers::Table::new(buf, loc),
-                }
+            Self {
+                _tab: flatbuffers::Table::new(buf, loc),
             }
         }
     }
@@ -346,10 +340,8 @@ pub mod wal {
         type Inner = LogMeta<'a>;
         #[inline]
         unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-            unsafe {
-                Self {
-                    _tab: flatbuffers::Table::new(buf, loc),
-                }
+            Self {
+                _tab: flatbuffers::Table::new(buf, loc),
             }
         }
     }
@@ -596,10 +588,8 @@ pub mod wal {
         type Inner = TraceMeta<'a>;
         #[inline]
         unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-            unsafe {
-                Self {
-                    _tab: flatbuffers::Table::new(buf, loc),
-                }
+            Self {
+                _tab: flatbuffers::Table::new(buf, loc),
             }
         }
     }
@@ -812,10 +802,8 @@ pub mod wal {
         type Inner = FlatbufMeta<'a>;
         #[inline]
         unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-            unsafe {
-                Self {
-                    _tab: flatbuffers::Table::new(buf, loc),
-                }
+            Self {
+                _tab: flatbuffers::Table::new(buf, loc),
             }
         }
     }
@@ -1223,14 +1211,14 @@ pub mod wal {
     /// # Safety
     /// Callers must trust the given bytes do indeed contain a valid `FlatbufMeta`.
     pub unsafe fn root_as_flatbuf_meta_unchecked(buf: &[u8]) -> FlatbufMeta {
-        unsafe { flatbuffers::root_unchecked::<FlatbufMeta>(buf) }
+        flatbuffers::root_unchecked::<FlatbufMeta>(buf)
     }
     #[inline]
     /// Assumes, without verification, that a buffer of bytes contains a size prefixed FlatbufMeta and returns it.
     /// # Safety
     /// Callers must trust the given bytes do indeed contain a valid size prefixed `FlatbufMeta`.
     pub unsafe fn size_prefixed_root_as_flatbuf_meta_unchecked(buf: &[u8]) -> FlatbufMeta {
-        unsafe { flatbuffers::size_prefixed_root_unchecked::<FlatbufMeta>(buf) }
+        flatbuffers::size_prefixed_root_unchecked::<FlatbufMeta>(buf)
     }
     #[inline]
     pub fn finish_flatbuf_meta_buffer<'a, 'b, A: flatbuffers::Allocator + 'a>(

@@ -14,6 +14,9 @@ use tokio::sync::oneshot;
 use tokio::sync::oneshot::Sender;
 use tracing::info;
 use tracing_actix_web::TracingLogger;
+use utoipa::OpenApi;
+use utoipa_redoc::{Redoc, Servable};
+use utoipa_swagger_ui::SwaggerUi;
 
 pub struct QueryServer {
     pub actor_registry: Arc<dyn InjestSystem>,
@@ -26,12 +29,18 @@ impl PorosServer for QueryServer {
     where
         Self: Sized,
     {
-        _config.service(
-            web::scope("/api/v1")
-                .service(get_health_endpoint_factory())
-                .service(submit_new_pattern_factory())
-                .service(get_all_flights_factory()),
-        );
+        _config
+            .service(
+                web::scope("/api/v1")
+                    .service(get_health_endpoint_factory())
+                    .service(submit_new_pattern_factory())
+                    .service(get_all_flights_factory())
+                    .service(Redoc::with_url("/redoc", ApiDoc::openapi())),
+            )
+            .service(
+                SwaggerUi::new("/swagger-ui/{_:.*}")
+                    .url("/api-docs/openapi.json", ApiDoc::openapi()),
+            );
     }
 
     async fn bootstrap_server(
@@ -48,14 +57,14 @@ impl PorosServer for QueryServer {
     where
         Self: Sized,
     {
-        let listener = create_listener(&config);
+        let listener = create_listener(config);
         let actor_registry = self.actor_registry.clone();
         match listener {
             Ok(listener) => {
                 let server = HttpServer::new(move || {
                     App::new()
                         .wrap(TracingLogger::default())
-                        .configure(|config| Self::configure_routes(config))
+                        .configure(Self::configure_routes)
                         .app_data(Data::new(actor_registry.clone()))
                 })
                 .listen(listener)?
@@ -86,7 +95,7 @@ impl PorosServer for QueryServer {
                 Ok((query_server, server_future, None))
             }
             Err(error) => {
-                panic!("Server fatal error - {}", error);
+                panic!("Server fatal error - {error}");
             }
         }
     }
@@ -115,6 +124,27 @@ async fn shutdown_hook(shutdown_receiver: oneshot::Receiver<()>) {
         }
     }
 }
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::api::http::health::get_health_endpoint_factory,
+        crate::api::http::regex::get_all_flights_factory,
+        crate::api::http::regex::submit_new_pattern_factory
+    ),
+    components(
+        schemas(crate::api::http::regex::FlightsList)
+    ),
+    tags(
+        (name = "Health", description = "Health check"),
+        (name = "Flights", description = "Flight listing"),
+        (name = "Submit Patterns", description = "Submit new grok patterns")  
+    ),
+    servers(
+        (url = "/api/v1", description = "API base path")
+    )
+)]
+pub struct ApiDoc; // <--- Must be public, must derive OpenApi
 
 pub async fn block_until_shutdown_signal() {
     use tokio::signal::unix::{SignalKind, signal};

@@ -15,17 +15,17 @@ fn main() {
             "--rust",
             "-o",
             &out_dir,
-            &format!("{}/{}", schema_dir, schema_file),
+            &format!("{schema_dir}/{schema_file}"),
         ])
         .status()
         .expect("Failed to run flatc");
 
     if !status.success() {
-        panic!("flatc failed with status: {}", status);
+        panic!("flatc failed with status: {status}");
     }
 
     // Optionally copy generated file to src/ if you prefer that
-    let generated = format!("{}/wal_schema_generated.rs", out_dir);
+    let generated = format!("{out_dir}/wal_schema_generated.rs");
     let destination = Path::new("src/core/schema/wal_schema_generated.rs");
 
     fs::create_dir_all(destination.parent().unwrap()).unwrap();

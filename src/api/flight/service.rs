@@ -18,7 +18,6 @@ use futures::stream;
 use futures_util::StreamExt;
 use std::vec;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
-use arrow_schema::DataType;
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
@@ -74,7 +73,7 @@ impl FlightService for LogFlightServer {
                 let schema_ipc = SchemaAsIpc::new(schema.as_ref(), &ipc_options);
 
                 let schema_result = SchemaResult::try_from(schema_ipc)
-                    .map_err(|e| Status::internal(format!("Failed to convert Schema: {}", e)))
+                    .map_err(|e| Status::internal(format!("Failed to convert Schema: {e}")))
                     .unwrap();
 
                 let descriptor = FlightDescriptor::new_path(vec![table_name.clone()]);
@@ -100,8 +99,8 @@ impl FlightService for LogFlightServer {
                 let flight_info = FlightInfo {
                     flight_descriptor: Some(descriptor),
                     schema: schema_result.schema,
-                    total_records: total_records,
-                    total_bytes: total_bytes,
+                    total_records,
+                    total_bytes,
                     endpoint: vec![],
                     app_metadata: Bytes::new(),
                     ordered: false,
@@ -154,8 +153,7 @@ impl FlightService for LogFlightServer {
             Some(b) => b.clone(),
             None => {
                 return Err(Status::not_found(format!(
-                    "No data found for table '{}'",
-                    table_name
+                    "No data found for table '{table_name}'"
                 )));
             }
         };
@@ -248,9 +246,9 @@ impl FlightService for LogFlightServer {
 
                 // Persist the schema is database
                 self.actor_registry.get_db().do_send(save_schema);
-                let fields : Vec<Fields>= vec![];
+                let fields: Vec<Fields> = vec![];
                 for field in schema.fields() {
-                    let field = Fields {
+                    let _field = Fields {
                         column_name: field.name().to_string(),
                         data_type: field.data_type().to_string(),
                     };
@@ -262,7 +260,7 @@ impl FlightService for LogFlightServer {
                     .do_send(RegisterFlight {
                         team_id: "myteam".to_string(),
                         flight: name.clone().unwrap().to_string(),
-                        fields
+                        fields,
                     });
                 continue; // Schema messages do not contain data
             }

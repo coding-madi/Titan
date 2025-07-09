@@ -46,8 +46,7 @@ impl WalOffsetManager {
                 // If the next offset exceeds max file size, reset to 0
                 self.reset_offset();
                 return Err(format!(
-                    "Max file size reached. Resetting offset to 0. Current offset: {}, next: {}",
-                    current_offset, next
+                    "Max file size reached. Resetting offset to 0. Current offset: {current_offset}, next: {next}"
                 ));
             }
 

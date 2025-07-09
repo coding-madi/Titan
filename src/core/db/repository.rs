@@ -22,7 +22,7 @@ pub trait SchemaRepository: Send + Sync {
         let ipc_options = IpcWriteOptions::default();
         let schema_ipc = SchemaAsIpc::new(schema.schema.as_ref(), &ipc_options);
         let schema_result = SchemaResult::try_from(schema_ipc)
-            .map_err(|e| Status::internal(format!("Failed to convert Schema: {}", e)))
+            .map_err(|e| Status::internal(format!("Failed to convert Schema: {e}")))
             .unwrap();
         let bytes = schema_result.schema.clone().to_vec();
         Ok(bytes)

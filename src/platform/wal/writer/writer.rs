@@ -51,7 +51,7 @@ pub async fn write_wal_block_async(
     // --- CRITICAL CHANGE HERE: Open a new file handle for this specific write ---
     let mut file = OpenOptions::new()
         .write(true)
-        .open(&*path) // Deref Arc<String> to &str
+        .open(path) // Deref Arc<String> to &str
         .await?;
 
     let header: WalBlockHeader = WalBlockHeader {
@@ -128,7 +128,7 @@ pub fn write_wal_block(
     writer.write_all(metadata)?;
 
     // Write data
-    writer.write_all(&data_buf)?;
+    writer.write_all(data_buf)?;
     // Optional: write reserve/padding here
     Ok(())
 }

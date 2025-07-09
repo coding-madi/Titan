@@ -9,8 +9,8 @@ pub enum ServerError {
 impl fmt::Display for ServerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ServerError::Io(err) => write!(f, "I/O error: {}", err),
-            ServerError::TonicTransport(err) => write!(f, "Tonic transport error: {}", err),
+            ServerError::Io(err) => write!(f, "I/O error: {err}"),
+            ServerError::TonicTransport(err) => write!(f, "Tonic transport error: {err}"),
         }
     }
 }

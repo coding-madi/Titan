@@ -49,7 +49,7 @@ impl ActorFactory {
         db_actor.start()
     }
 
-    pub async fn flight_registry_actor(config: &Settings) -> Addr<FlightRegistry> {
+    pub async fn flight_registry_actor(_config: &Settings) -> Addr<FlightRegistry> {
         let flight_registry_actor = FlightRegistry::new().await;
         flight_registry_actor.start()
     }
