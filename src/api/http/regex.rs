@@ -57,54 +57,6 @@ impl Message for RegexRequest {
     type Result = Result<(), ValidationErrors>;
 }
 
-pub async fn submit_new_pattern(
-    data: Data<Arc<dyn InjestSystem>>,
-    req: web::Json<RegexRequest>,
-) -> impl Responder {
-    match validate_regex_pattern(&req.pattern) {
-        Ok(_) => {
-            let regex_request = req.into_inner();
-            let team_id = regex_request.tenant.clone();
-            let flight = regex_request.flight_id.clone();
-            let flight_registry_actor = data.get_flight_registry_actor();
-
-            // 1. Check if the flight exists
-            match check_if_flight_exists(flight_registry_actor, team_id, flight.clone()).await {
-                Ok(is_flight_exists) => {
-                    if is_flight_exists {
-                        HttpResponse::Ok().json(format!("Regex submitted for {}", flight))
-                    } else {
-                        HttpResponse::Conflict().json(format!(
-                            "Regex could not be submitted, Flight {} does not exist",
-                            flight
-                        ))
-                    }
-                }
-                Err(e) => {
-                    HttpResponse::NotFound().json(format!("Flight {} not found - {}", flight, e))
-                }
-            }
-        }
-        Err(validation_errors) => HttpResponse::BadRequest().json(validation_errors),
-    }
-}
-
-async fn check_if_flight_exists(
-    flight_registry_actor: Addr<FlightRegistry>,
-    team_id: String,
-    flight: String,
-) -> Result<bool, std::io::Error> {
-    let exists = flight_registry_actor
-        .send(CheckFlight {
-            team_id: team_id.clone(),
-            flight: flight.clone(),
-        })
-        .await
-        .map_err(|e| ErrorType::ActorError(e))
-        .unwrap();
-    exists
-}
-
 enum ErrorType {
     ActorError(MailboxError),
 }
@@ -150,6 +102,39 @@ pub fn submit_new_pattern_factory() -> Resource {
     web::resource("/pattern").route(web::post().to(submit_new_pattern))
 }
 
+pub async fn submit_new_pattern(
+    data: Data<Arc<dyn InjestSystem>>,
+    req: web::Json<RegexRequest>,
+) -> impl Responder {
+    match validate_regex_pattern(&req.pattern) {
+        Ok(_) => {
+            let regex_request = req.into_inner();
+            let team_id = regex_request.tenant.clone();
+            let flight = regex_request.flight_id.clone();
+            let flight_registry_actor = data.get_flight_registry_actor();
+
+            // 1. Check if the flight exists
+            match check_if_flight_exists(flight_registry_actor, team_id, flight.clone()).await {
+                Ok(is_flight_exists) => {
+                    if is_flight_exists {
+                        data.get_broadcaster_actor().do_send(regex_request);
+                        HttpResponse::Ok().json(format!("Regex submitted for {}", flight))
+                    } else {
+                        HttpResponse::Conflict().json(format!(
+                            "Regex could not be submitted, Flight {} does not exist",
+                            flight
+                        ))
+                    }
+                }
+                Err(e) => {
+                    HttpResponse::NotFound().json(format!("Flight {} not found - {}", flight, e))
+                }
+            }
+        }
+        Err(validation_errors) => HttpResponse::BadRequest().json(validation_errors),
+    }
+}
+
 pub fn validate_regex_pattern(patterns: &Vec<Pattern>) -> Result<(), ValidationError> {
     for pattern in patterns {
         match pattern {
@@ -163,6 +148,24 @@ pub fn validate_regex_pattern(patterns: &Vec<Pattern>) -> Result<(), ValidationE
     }
     Ok(())
 }
+
+async fn check_if_flight_exists(
+    flight_registry_actor: Addr<FlightRegistry>,
+    team_id: String,
+    flight: String,
+) -> Result<bool, std::io::Error> {
+    let exists = flight_registry_actor
+        .send(CheckFlight {
+            team_id: team_id.clone(),
+            flight: flight.clone(),
+        })
+        .await
+        .map_err(|e| ErrorType::ActorError(e))
+        .unwrap();
+    exists
+}
+
+
 
 #[utoipa::path(
     get,

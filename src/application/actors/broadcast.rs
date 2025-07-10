@@ -68,6 +68,7 @@ impl<'a> Handler<RecordBatchWrapper> for Broadcaster {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct RecordBatchWrapper {
     pub metadata: Metadata,
     pub data: Arc<RecordBatch>,

@@ -1,18 +1,22 @@
 use std::collections::HashMap;
-
+use std::ops::Deref;
+use std::sync::Arc;
+use std::time::Instant;
 use actix::{Actor, Addr, Context, Handler};
 use arrow::compute::regexp_match;
 use arrow::datatypes::Schema;
-use arrow_array::{Array, Datum, ListArray, StringArray};
+use arrow_array::{Array, BooleanArray, ListArray, RecordBatch, StringArray};
+use arrow_schema::{DataType, Field};
+use tracing::error;
 use tracing::log::info;
 use validator::ValidationErrors;
 
 pub(crate) use crate::api::http::regex::{Pattern, RegexRequest};
-use crate::application::actors::broadcast::RecordBatchWrapper;
+use crate::application::actors::broadcast::{Metadata, RecordBatchWrapper};
 use crate::application::actors::wal::WalEntry;
 
 pub struct ParsingActor {
-    pub patterns: HashMap<String, Vec<Pattern>>, // service_id → patterns
+    pub patterns: HashMap<String, Vec<Pattern>>, // flight_id → patterns
     pub schema: HashMap<String, Schema>,         // service_id → schema
     pub log_writer: Addr<WalEntry>,
 }
@@ -57,6 +61,9 @@ impl Handler<RegexRequest> for ParsingActor {
     }
 }
 
+use arrow::array::MutableArrayData;
+use arrow_array::builder::{BooleanBuilder, StringBuilder};
+
 // Handle incoming data for parsing
 impl Handler<RecordBatchWrapper> for ParsingActor {
     type Result = ();
@@ -73,9 +80,22 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
         for pattern in patterns {
             match pattern {
                 Pattern::RegexPattern(regex_pattern) => {
-                    if let Err(e) = apply_regex_pattern(&record, regex_pattern) {
-                        eprintln!("Regex application failed: {:?}", e);
-                    }
+
+                    let column_name = "event_type";
+                    let column_index = record
+                        .data
+                        .schema()
+                        .index_of(column_name)
+                        .map_err(|e| format!("Column not found '{}': {:?}", column_name, e)).unwrap();
+
+                    let text_array = record
+                        .data
+                        .column(column_index)
+                        .as_any()
+                        .downcast_ref::<StringArray>()
+                        .ok_or_else(|| format!("Column '{}' is not a StringArray", column_name)).unwrap();
+                    let matches = fast_regex_match(text_array, ".*").unwrap();
+                    info!("Regex application succeeded");
                 }
                 Pattern::GrokPattern(_grok) => {
                     // TODO: Implement Grok parsing if needed
@@ -88,49 +108,23 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
 }
 
 // Apply a single RegexPattern to the "event_type" column
-fn apply_regex_pattern(
-    record: &RecordBatchWrapper,
-    pattern: &crate::api::http::regex::RegexPattern,
-) -> Result<(), String> {
-    let column_name = "event_type";
+use regex::Regex;
 
-    let column_index = record
-        .data
-        .schema()
-        .index_of(column_name)
-        .map_err(|e| format!("Column not found '{}': {:?}", column_name, e))?;
+fn fast_regex_match(text_array: &StringArray, pattern: &str) -> Result<BooleanArray, String> {
+    let regex = Regex::new(pattern).map_err(|e| format!("Invalid regex: {e}"))?;
+    let mut builder = BooleanBuilder::new();
 
-    let text_array = record
-        .data
-        .column(column_index)
-        .as_any()
-        .downcast_ref::<StringArray>()
-        .ok_or_else(|| format!("Column '{}' is not a StringArray", column_name))?;
-
-    // Create a pattern array of the same length
-    let pattern_array = StringArray::from(vec![pattern.pattern_string.clone(); text_array.len()]);
-
-    let matches = regexp_match(text_array, &pattern_array as &dyn Datum, None)
-        .map_err(|e| format!("regexp_match error: {:?}", e))?;
-
-    let list_array = matches
-        .as_any()
-        .downcast_ref::<ListArray>()
-        .ok_or("Match result is not a ListArray")?;
-
-    for i in 0..list_array.len() {
-        let group_values = list_array.value(i);
-        let str_array = group_values
-            .as_any()
-            .downcast_ref::<StringArray>()
-            .ok_or("Group value is not a StringArray")?;
-
-        let groups: Vec<&str> = (0..str_array.len()).map(|i| str_array.value(i)).collect();
-        println!("Regex groups: {groups:?}");
+    for i in 0..text_array.len() {
+        if text_array.is_null(i) {
+            builder.append_null();
+        } else {
+            builder.append_value(regex.is_match(text_array.value(i)));
+        }
     }
 
-    Ok(())
+    Ok(builder.finish())
 }
+
 
 #[allow(dead_code)]
 fn get_patterns_from_database(_team_id: &String) -> HashMap<String, Vec<Pattern>> {

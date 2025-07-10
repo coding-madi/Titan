@@ -252,8 +252,6 @@ impl FlightService for LogFlightServer {
                         column_name: field.name().to_string(),
                         data_type: field.data_type().to_string(),
                     };
-
-                    println!("---");
                 }
                 self.actor_registry
                     .get_flight_registry_actor()
@@ -273,9 +271,7 @@ impl FlightService for LogFlightServer {
                         schema.clone(),
                         &Default::default(),
                     )
-                    .map_err(|e| {
-                        Status::internal(format!("Failed to convert to RecordBatch: {}", e))
-                    })?;
+                    .map_err(|e| Status::internal(format!("Failed to convert to RecordBatch: {}", e)))?;
 
                     let batch_wrapped = RecordBatchWrapper {
                         metadata: Metadata {

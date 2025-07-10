@@ -7,14 +7,12 @@ struct Health {
     status: String,
 }
 
-use std::fmt::Display;
-use utoipa::ToSchema;
-
 #[derive(Serialize)]
 enum Status {
     OK,
 }
 
+use std::fmt::Display;
 impl Display for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -29,6 +27,7 @@ pub async fn health_endpoint() -> impl Responder {
     }))
 }
 
+use utoipa::ToSchema;
 #[utoipa::path(
     get,
     path = "/health",
