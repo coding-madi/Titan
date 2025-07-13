@@ -98,7 +98,7 @@ pub trait RepositoryProvider: Send + Sync {
 }
 
 pub struct SqliteRepositoryProvider {
-    schema_repo: Arc<dyn SchemaRepository + Send + Sync>,
+    pub schema_repo: Arc<dyn SchemaRepository + Send + Sync>,
 }
 impl SqliteRepositoryProvider {
     pub fn new(pool: SqlitePool) -> Self {

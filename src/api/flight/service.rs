@@ -271,7 +271,9 @@ impl FlightService for LogFlightServer {
                         schema.clone(),
                         &Default::default(),
                     )
-                    .map_err(|e| Status::internal(format!("Failed to convert to RecordBatch: {}", e)))?;
+                    .map_err(|e| {
+                        Status::internal(format!("Failed to convert to RecordBatch: {}", e))
+                    })?;
 
                     let batch_wrapped = RecordBatchWrapper {
                         metadata: Metadata {

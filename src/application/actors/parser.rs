@@ -1,18 +1,12 @@
-use std::collections::HashMap;
-use std::ops::Deref;
-use std::sync::Arc;
-use std::time::Instant;
 use actix::{Actor, Addr, Context, Handler};
-use arrow::compute::regexp_match;
 use arrow::datatypes::Schema;
-use arrow_array::{Array, BooleanArray, ListArray, RecordBatch, StringArray};
-use arrow_schema::{DataType, Field};
-use tracing::error;
+use arrow_array::{Array, BooleanArray, StringArray};
+use std::collections::HashMap;
 use tracing::log::info;
 use validator::ValidationErrors;
 
 pub(crate) use crate::api::http::regex::{Pattern, RegexRequest};
-use crate::application::actors::broadcast::{Metadata, RecordBatchWrapper};
+use crate::application::actors::broadcast::RecordBatchWrapper;
 use crate::application::actors::wal::WalEntry;
 
 pub struct ParsingActor {
@@ -61,8 +55,7 @@ impl Handler<RegexRequest> for ParsingActor {
     }
 }
 
-use arrow::array::MutableArrayData;
-use arrow_array::builder::{BooleanBuilder, StringBuilder};
+use arrow_array::builder::BooleanBuilder;
 
 // Handle incoming data for parsing
 impl Handler<RecordBatchWrapper> for ParsingActor {
@@ -80,20 +73,21 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
         for pattern in patterns {
             match pattern {
                 Pattern::RegexPattern(regex_pattern) => {
-
                     let column_name = "event_type";
                     let column_index = record
                         .data
                         .schema()
                         .index_of(column_name)
-                        .map_err(|e| format!("Column not found '{}': {:?}", column_name, e)).unwrap();
+                        .map_err(|e| format!("Column not found '{}': {:?}", column_name, e))
+                        .unwrap();
 
                     let text_array = record
                         .data
                         .column(column_index)
                         .as_any()
                         .downcast_ref::<StringArray>()
-                        .ok_or_else(|| format!("Column '{}' is not a StringArray", column_name)).unwrap();
+                        .ok_or_else(|| format!("Column '{}' is not a StringArray", column_name))
+                        .unwrap();
                     let matches = fast_regex_match(text_array, ".*").unwrap();
                     info!("Regex application succeeded");
                 }
@@ -124,7 +118,6 @@ fn fast_regex_match(text_array: &StringArray, pattern: &str) -> Result<BooleanAr
 
     Ok(builder.finish())
 }
-
 
 #[allow(dead_code)]
 fn get_patterns_from_database(_team_id: &String) -> HashMap<String, Vec<Pattern>> {

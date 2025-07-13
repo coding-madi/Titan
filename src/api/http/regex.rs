@@ -165,8 +165,6 @@ async fn check_if_flight_exists(
     exists
 }
 
-
-
 #[utoipa::path(
     get,
     path = "/list-flights/{team_id}",
