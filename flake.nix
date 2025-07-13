@@ -5,15 +5,6 @@
     cargo2nix.url = "github:cargo2nix/cargo2nix/42d9bc527ff2bc90cc52024f66bb48d9b2a9e9dc";
     flake-utils.follows = "cargo2nix/flake-utils";
     nixpkgs.follows = "cargo2nix/nixpkgs";
-    # crane = {
-    #   url = "github:ipetkov/crane";
-    #   inputs = {
-    #     nixpkgs.follows = "nixpkgs";
-    #     rust-overlay.follows = "rust-overlay";
-    #     flake-utils.follows = "flake-utils";
-    #   };
-    # };
-
   };
 
   outputs = inputs: with inputs; # pass through all inputs and bring them into scope
@@ -108,10 +99,7 @@
 
         # the packages in `nix build .#packages.<system>.<name>`
         packages = {
-          # nix build .#poros
-          # nix build .#packages.x86_64-linux.poros
           poros = (rustPkgs.workspace.poros {});
-          # nix build
           default = packages.poros; # rec
         };
       }
