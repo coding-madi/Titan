@@ -5,14 +5,14 @@
     cargo2nix.url = "github:cargo2nix/cargo2nix/42d9bc527ff2bc90cc52024f66bb48d9b2a9e9dc";
     flake-utils.follows = "cargo2nix/flake-utils";
     nixpkgs.follows = "cargo2nix/nixpkgs";
-    crane = {
-      url = "github:ipetkov/crane";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        rust-overlay.follows = "rust-overlay";
-        flake-utils.follows = "flake-utils";
-      };
-    };
+    # crane = {
+    #   url = "github:ipetkov/crane";
+    #   inputs = {
+    #     nixpkgs.follows = "nixpkgs";
+    #     rust-overlay.follows = "rust-overlay";
+    #     flake-utils.follows = "flake-utils";
+    #   };
+    # };
 
   };
 
