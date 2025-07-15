@@ -5,6 +5,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::{Debug, Display, Error, Formatter};
 use std::sync::Arc;
+use actix::dev::ToEnvelope;
 use validator::{Validate, ValidationError, ValidationErrors};
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone, ToSchema, Message)]
@@ -156,17 +157,19 @@ async fn check_if_flight_exists<F>(
     flight: String,
 ) -> Result<bool, std::io::Error>
 where
-    F : Actor + Handler<CheckFlight>,
+    F: Actor + Handler<CheckFlight>,
+    <F as Actor>::Context: ToEnvelope<F, CheckFlight>,
 {
     let exists = flight_registry_actor
         .send(CheckFlight {
-            team_id: team_id.clone(),
-            flight: flight.clone(),
+            team_id,
+            flight,
         })
         .await
-        .map_err(|e| ErrorType::ActorError(e))
-        .unwrap();
-    exists
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Actor error: {}", e)))?
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Handler error: {}", e)))?;
+
+    Ok(exists)
 }
 
 #[utoipa::path(
