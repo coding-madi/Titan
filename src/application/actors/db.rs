@@ -88,7 +88,6 @@ pub struct GetPatternsForTenant {
     _tenant: String,
 }
 
-
 impl Message for GetPatternsForTenant {
     type Result = Vec<String>;
 }

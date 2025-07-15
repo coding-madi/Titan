@@ -1,104 +1,63 @@
-use crate::application::actors::broadcast::Broadcaster;
-use crate::application::actors::db::{DbActor, GetPatternsForTenant, ReposReady, SaveSchema};
-use crate::application::actors::flight_registry::FlightRegistry;
-use crate::application::actors::iceberg::IcebergWriter;
-use crate::application::actors::parser::ParsingActor;
-use crate::application::actors::wal::WalEntry;
-use crate::config::yaml_reader::Settings;
-use crate::core::db::factory::database_factory::RepositoryProvider;
+// src/platform/injest_system.rs
+
 use actix::{Actor, Addr, Handler};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::api::http::regex::RegexRequest;
+use crate::application::actors::broadcast::{Broadcaster, RecordBatchWrapper};
+use crate::application::actors::db::{DbActor, GetPatternsForTenant, ReposReady, SaveSchema};
+use crate::application::actors::flight_registry::{
+    CheckFlight, FlightRegistry, ListFlights, RegisterFlight,
+};
+use crate::application::actors::iceberg::{FlushInstruction, IcebergWriter};
+use crate::application::actors::parser::ParsingActor;
+use crate::application::actors::wal::WalEntry;
+use crate::config::yaml_reader::Settings;
+use crate::core::db::factory::database_factory::RepositoryProvider;
+
+// --- Actor Factory --- //
 pub struct ActorFactory;
 
 impl ActorFactory {
-    pub fn broadcast_actor(parser_actor: Vec<Addr<ParsingActor>>) -> Addr<Broadcaster> {
-        let broadcast_actor = Broadcaster::new(parser_actor);
-        broadcast_actor.start()
+    pub fn broadcast_actor(parser_actors: Vec<Addr<ParsingActor<WalEntry>>>) -> Addr<Broadcaster> {
+        Broadcaster::new(parser_actors).start()
     }
 
-    pub fn parser_actor(shards: u8, wal_actor: Addr<WalEntry>) -> Vec<Addr<ParsingActor>> {
-        let mut list_of_parsers = vec![];
-        for _ in 0..shards {
-            let map = HashMap::new();
-
-            let actor = ParsingActor::start(ParsingActor {
-                patterns: map,          // Initialize with an empty regex,
-                schema: HashMap::new(), // Initialize with an empty Schema
-                log_writer: wal_actor.clone(),
-            });
-            list_of_parsers.push(actor);
-        }
-        list_of_parsers
+    pub fn parser_actor(
+        shards: u8,
+        wal_actor: Addr<WalEntry>,
+    ) -> Vec<Addr<ParsingActor<WalEntry>>> {
+        (0..shards)
+            .map(|_| {
+                ParsingActor {
+                    patterns: HashMap::new(),
+                    schema: HashMap::new(),
+                    log_writer: wal_actor.clone(),
+                }
+                .start()
+            })
+            .collect()
     }
 
     pub fn wal_actor(iceberg: Addr<IcebergWriter>) -> Addr<WalEntry> {
-        let wal_actor = WalEntry::new(iceberg);
-        wal_actor.start()
+        WalEntry::new(iceberg).start()
     }
 
     pub fn iceberg_actor() -> Addr<IcebergWriter> {
-        let iceberg_actor = IcebergWriter::default();
-        iceberg_actor.start()
+        IcebergWriter::default().start()
     }
 
-    // This actor is lazy initialized
     pub async fn db_actor(config: &Settings, repos: Arc<dyn RepositoryProvider>) -> Addr<DbActor> {
-        let db_actor = DbActor::new(config.database.clone(), repos).await;
-        db_actor.start()
+        DbActor::new(config.database.clone(), repos).await.start()
     }
 
     pub async fn flight_registry_actor(_config: &Settings) -> Addr<FlightRegistry> {
-        let flight_registry_actor = FlightRegistry::new().await;
-        flight_registry_actor.start()
+        FlightRegistry::new().await.start()
     }
 }
 
-pub struct InjestRegistry {
-    pub db: Addr<DbActor>,
-    pub broadcaster: Addr<Broadcaster>,
-    pub parser: Vec<Addr<ParsingActor>>, // sharded for performance
-    pub wal_actor: Addr<WalEntry>,
-    pub iceberg_actor: Addr<IcebergWriter>,
-    pub flight_registry: Addr<FlightRegistry>,
-}
-
-pub trait InjestSystem: Sync + Send {
-    fn get_db(&self) -> Addr<DbActor>;
-    fn get_parser(&self) -> Vec<Addr<ParsingActor>>;
-    fn get_wal_actor(&self) -> Addr<WalEntry>;
-    fn get_iceberg_actor(&self) -> Addr<IcebergWriter>;
-    fn get_broadcaster_actor(&self) -> Addr<Broadcaster>;
-    fn get_flight_registry_actor(&self) -> Addr<FlightRegistry>;
-}
-
-impl InjestSystem for InjestRegistry {
-    fn get_db(&self) -> Addr<DbActor> {
-        self.db.clone() // This clone is cheap and not an antipattern, in this context.
-    }
-
-    fn get_parser(&self) -> Vec<Addr<ParsingActor>> {
-        self.parser.clone()
-    }
-
-    fn get_wal_actor(&self) -> Addr<WalEntry> {
-        self.wal_actor.clone()
-    }
-
-    fn get_iceberg_actor(&self) -> Addr<IcebergWriter> {
-        self.iceberg_actor.clone()
-    }
-
-    fn get_broadcaster_actor(&self) -> Addr<Broadcaster> {
-        self.broadcaster.clone()
-    }
-
-    fn get_flight_registry_actor(&self) -> Addr<FlightRegistry> {
-        self.flight_registry.clone()
-    }
-}
-
+// --- Generic Registry Trait --- //
 pub trait Registry {
     type Db: Actor
         + Sync
@@ -106,126 +65,59 @@ pub trait Registry {
         + Handler<ReposReady>
         + Handler<GetPatternsForTenant>
         + Handler<SaveSchema>;
+    type Parser: Actor + Sync + Send + Handler<RegexRequest> + Handler<RecordBatchWrapper>;
+    type Wal: Actor + Sync + Send + Handler<RecordBatchWrapper>;
+    type IcebergActor: Actor + Sync + Send + Handler<FlushInstruction>;
+    type Broadcaster: Actor + Sync + Send + Handler<RecordBatchWrapper>;
+    type FlightRegistry: Actor
+        + Sync
+        + Send
+        + Handler<CheckFlight>
+        + Handler<RegisterFlight>
+        + Handler<ListFlights>;
 
     fn get_db(&self) -> Addr<Self::Db>;
+    fn get_parser(&self) -> Vec<Addr<Self::Parser>>;
+    fn get_wal_actor(&self) -> Addr<Self::Wal>;
+    fn get_iceberg_actor(&self) -> Addr<Self::IcebergActor>;
+    fn get_broadcaster_actor(&self) -> Addr<Self::Broadcaster>;
+    fn get_flight_registry_actor(&self) -> Addr<Self::FlightRegistry>;
 }
 
 #[derive(Clone)]
-struct ProdInjestRegistry {
+pub struct ProdInjestRegistry {
     pub db: Addr<DbActor>,
+    pub parser: Vec<Addr<ParsingActor<WalEntry>>>,
+    pub wal_actor: Addr<WalEntry>,
+    pub iceberg_actor: Addr<IcebergWriter>,
+    pub broadcaster: Addr<Broadcaster>,
+    pub flight_registry: Addr<FlightRegistry>,
 }
 
 impl Registry for ProdInjestRegistry {
     type Db = DbActor;
+    type Parser = ParsingActor<WalEntry>;
+    type Wal = WalEntry;
+    type IcebergActor = IcebergWriter;
+    type Broadcaster = Broadcaster;
+    type FlightRegistry = FlightRegistry;
 
     fn get_db(&self) -> Addr<DbActor> {
         self.db.clone()
     }
-}
-
-struct MockDbActor;
-
-impl Actor for MockDbActor {
-    type Context = actix::Context<Self>;
-}
-
-struct TestInjestRegistry {
-    pub db_actor: Addr<MockDbActor>,
-}
-
-impl Handler<ReposReady> for MockDbActor {
-    type Result = Result<(), ()>;
-
-    fn handle(&mut self, msg: ReposReady, ctx: &mut Self::Context) -> Self::Result {
-        println!("Repo ready called with:");
-        Ok(())
+    fn get_parser(&self) -> Vec<Addr<Self::Parser>> {
+        self.parser.clone()
     }
-}
-
-impl Handler<SaveSchema> for MockDbActor {
-    type Result = ();
-
-    fn handle(&mut self, msg: SaveSchema, ctx: &mut Self::Context) -> Self::Result {
-        todo!()
+    fn get_wal_actor(&self) -> Addr<Self::Wal> {
+        self.wal_actor.clone()
     }
-}
-
-impl Handler<GetPatternsForTenant> for MockDbActor {
-    type Result = Vec<String>;
-
-    fn handle(&mut self, msg: GetPatternsForTenant, ctx: &mut Self::Context) -> Self::Result {
-        todo!()
+    fn get_iceberg_actor(&self) -> Addr<Self::IcebergActor> {
+        self.iceberg_actor.clone()
     }
-}
-
-impl Registry for TestInjestRegistry {
-    type Db = MockDbActor;
-
-    fn get_db(&self) -> Addr<MockDbActor> {
-        self.db_actor.clone()
+    fn get_broadcaster_actor(&self) -> Addr<Broadcaster> {
+        self.broadcaster.clone()
     }
-}
-
-struct MockFactory;
-
-impl MockFactory {
-    pub fn create_db() -> Addr<MockDbActor> {
-        MockDbActor {}.start()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::db::factory::database_factory::SqliteRepositoryProvider;
-    use crate::core::db::sqlite::SqliteSchemaRepository;
-    use sqlx::SqlitePool;
-
-    #[actix_rt::test]
-    async fn create_mock() {
-        let mock = MockFactory::create_db();
-        let registry = TestInjestRegistry {
-            db_actor: mock.clone(),
-        };
-
-        let on_test_actor = OnTestActor::new(registry.db_actor.clone()).start();
-        let repo = ReposReady {
-            repos: Arc::new(SqliteRepositoryProvider {
-                schema_repo: Arc::new(SqliteSchemaRepository {
-                    sqlite_pool: SqlitePool::connect("").await.unwrap(),
-                }),
-            }),
-        };
-        let x = on_test_actor.send(repo).await.unwrap();
-        assert!(x.is_ok());
-        // thread::sleep(std::time::Duration::from_secs(1));
-    }
-}
-
-struct OnTestActor<
-    T: Actor + Sync + Send + Handler<ReposReady> + Handler<GetPatternsForTenant> + Handler<SaveSchema>,
-> {
-    db_actor: Addr<T>,
-}
-
-impl<
-    T: Actor + Sync + Send + Handler<ReposReady> + Handler<GetPatternsForTenant> + Handler<SaveSchema>,
-> Actor for OnTestActor<T>
-{
-    type Context = actix::Context<Self>;
-}
-
-impl OnTestActor<MockDbActor> {
-    fn new(db_actor: Addr<MockDbActor>) -> Self {
-        Self { db_actor }
-    }
-}
-
-impl Handler<ReposReady> for OnTestActor<MockDbActor> {
-    type Result = Result<(), ()>;
-
-    fn handle(&mut self, msg: ReposReady, ctx: &mut Self::Context) -> Self::Result {
-        self.db_actor.do_send(msg);
-        Ok(())
+    fn get_flight_registry_actor(&self) -> Addr<Self::FlightRegistry> {
+        self.flight_registry.clone()
     }
 }

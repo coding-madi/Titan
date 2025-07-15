@@ -10,7 +10,7 @@ use tonic::transport::Server;
 use tracing::info;
 
 pub struct InjestServer {
-    pub actor_registry: Arc<dyn InjestSystem>,
+    pub actor_registry: Arc<dyn Registry<Broadcaster=(), Db=(), FlightRegistry=(), IcebergActor=(), Parser=(), Wal=()>>,
     pub repos: Arc<dyn RepositoryProvider + Send + Sync>,
     pub _shutdown_handler: Option<Sender<()>>, // Hold the sender, else the sender is dropped and the receiver receives a None value and stops the server. // TODO: add the postgres database connection pool
 }
@@ -18,7 +18,7 @@ pub struct InjestServer {
 impl InjestServer {
     pub fn new(
         &self,
-        actor_registry: Arc<dyn InjestSystem>,
+        actor_registry: Arc<dyn Registry<Broadcaster=(), Db=(), FlightRegistry=(), IcebergActor=(), Parser=(), Wal=()>>,
         repos: Arc<dyn RepositoryProvider + Send + Sync>,
         _shutdown_handler: Option<Sender<()>>,
     ) -> Self {
@@ -134,7 +134,7 @@ use crate::api::flight::service::LogFlightServer;
 use crate::config::yaml_reader::Settings;
 use crate::core::db::factory::database_factory::RepositoryProvider;
 use crate::core::error::exception::server_error::ServerError;
-use crate::platform::actor_factory::InjestSystem;
+use crate::platform::actor_factory::{Registry};
 use crate::servers::server::PorosServer;
 use tokio::sync::oneshot::Receiver;
 use tracing::log::error;

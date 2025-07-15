@@ -2,7 +2,7 @@ use crate::api::http::health::get_health_endpoint_factory;
 use crate::api::http::regex::{get_all_flights_factory, submit_new_pattern_factory};
 use crate::config::yaml_reader::Settings;
 use crate::core::error::exception::server_error::ServerError;
-use crate::platform::actor_factory::InjestSystem;
+use crate::platform::actor_factory::{ Registry};
 use crate::servers::server::PorosServer;
 use actix_web::web::{Data, ServiceConfig};
 use actix_web::{App, HttpServer, web};
@@ -19,7 +19,7 @@ use utoipa_redoc::{Redoc, Servable};
 use utoipa_swagger_ui::SwaggerUi;
 
 pub struct QueryServer {
-    pub actor_registry: Arc<dyn InjestSystem>,
+    pub actor_registry: Arc<dyn Registry<Broadcaster=(), Db=(), FlightRegistry=(), IcebergActor=(), Parser=(), Wal=()>>,
 }
 
 impl PorosServer for QueryServer {

@@ -1,3 +1,4 @@
+use actix::dev::ToEnvelope;
 use actix::{Actor, Addr, Context, Handler};
 use arrow::datatypes::Schema;
 use arrow_array::{Array, BooleanArray, StringArray};
@@ -7,16 +8,19 @@ use validator::ValidationErrors;
 
 pub(crate) use crate::api::http::regex::{Pattern, RegexRequest};
 use crate::application::actors::broadcast::RecordBatchWrapper;
-use crate::application::actors::wal::WalEntry;
 
-pub struct ParsingActor {
+pub struct ParsingActor<WL: Actor + Sync + Send + Handler<RecordBatchWrapper>> {
     pub patterns: HashMap<String, Vec<Pattern>>, // flight_id → patterns
     pub schema: HashMap<String, Schema>,         // service_id → schema
-    pub log_writer: Addr<WalEntry>,
+    pub log_writer: Addr<WL>,
 }
 
-impl ParsingActor {
-    pub fn default(log_writer: Addr<WalEntry>) -> Self {
+impl<WL> ParsingActor<WL>
+where
+    WL: Actor + Sync + Send + Handler<RecordBatchWrapper>,
+    WL::Context: ToEnvelope<WL, RecordBatchWrapper>,
+{
+    pub fn default(log_writer: Addr<WL>) -> Self {
         Self {
             patterns: HashMap::new(),
             schema: HashMap::new(),
@@ -24,7 +28,7 @@ impl ParsingActor {
         }
     }
 
-    pub fn new(team_id: String, log_writer: Addr<WalEntry>) -> Self {
+    pub fn new(team_id: String, log_writer: Addr<WL>) -> Self {
         let patterns = get_patterns_from_database(&team_id);
         let schema = get_flight_and_schemas(&team_id);
 
@@ -36,7 +40,7 @@ impl ParsingActor {
     }
 }
 
-impl Actor for ParsingActor {
+impl<WL: Actor + Sync + Send + Handler<RecordBatchWrapper>> Actor for ParsingActor<WL> {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
@@ -45,7 +49,9 @@ impl Actor for ParsingActor {
 }
 
 // Handle regex rule registration
-impl Handler<RegexRequest> for ParsingActor {
+impl<WL: Actor + Sync + Send + Handler<RecordBatchWrapper>> Handler<RegexRequest>
+    for ParsingActor<WL>
+{
     type Result = Result<(), ValidationErrors>;
 
     fn handle(&mut self, msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
@@ -58,7 +64,11 @@ impl Handler<RegexRequest> for ParsingActor {
 use arrow_array::builder::BooleanBuilder;
 
 // Handle incoming data for parsing
-impl Handler<RecordBatchWrapper> for ParsingActor {
+impl<WL> Handler<RecordBatchWrapper> for ParsingActor<WL>
+where
+    WL: Actor + Sync + Send + Handler<RecordBatchWrapper>,
+    WL::Context: ToEnvelope<WL, RecordBatchWrapper>,
+{
     type Result = ();
 
     fn handle(&mut self, record: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {

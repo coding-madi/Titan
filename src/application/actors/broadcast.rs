@@ -6,12 +6,12 @@ use std::fmt::Display;
 use tracing::trace;
 
 pub struct Broadcaster {
-    pub parser_registry: Vec<Addr<ParsingActor>>,
+    pub parser_registry: Vec<Addr<ParsingActor<WalEntry>>>,
     pub next_shard_idx: usize, // Index to keep track of the next shard to send messages to
 }
 
 impl Broadcaster {
-    pub fn new(parser_actor: Vec<Addr<ParsingActor>>) -> Broadcaster {
+    pub fn new(parser_actor: Vec<Addr<ParsingActor<WalEntry>>>) -> Broadcaster {
         Self {
             next_shard_idx: 0,
             parser_registry: parser_actor,
@@ -39,8 +39,16 @@ impl Handler<RegexRequest> for Broadcaster {
 
 use crate::api::http::regex::RegexRequest;
 use crate::application::actors::parser::ParsingActor;
+use crate::application::actors::wal::WalEntry;
 use std::sync::Arc;
 use validator::ValidationErrors;
+
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+pub struct RecordBatchWrapper {
+    pub metadata: Metadata,
+    pub data: Arc<RecordBatch>,
+}
 
 impl<'a> Handler<RecordBatchWrapper> for Broadcaster {
     type Result = ();
@@ -69,12 +77,6 @@ impl<'a> Handler<RecordBatchWrapper> for Broadcaster {
 }
 
 #[derive(Debug, Clone)]
-pub struct RecordBatchWrapper {
-    pub metadata: Metadata,
-    pub data: Arc<RecordBatch>,
-}
-
-#[derive(Debug, Clone)]
 pub struct Metadata {
     pub flight: String,
     pub buffer_id: u64,
@@ -90,8 +92,4 @@ impl Display for Metadata {
             self.flight, self.schema
         )
     }
-}
-
-impl<'a> Message for RecordBatchWrapper {
-    type Result = ();
 }

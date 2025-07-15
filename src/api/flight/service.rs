@@ -1,7 +1,6 @@
 use crate::application::actors::broadcast::{Metadata, RecordBatchWrapper};
 use crate::application::actors::db::SaveSchema;
 use crate::application::actors::flight_registry::{Fields, RegisterFlight};
-use crate::platform::actor_factory::InjestSystem;
 use actix::dev::Stream;
 use actix_web::web::Bytes;
 use arrow::datatypes::Schema;
@@ -21,15 +20,22 @@ use std::{collections::HashMap, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
+use crate::platform::actor_factory::Registry;
 
-pub struct LogFlightServer {
+pub struct LogFlightServer<R>
+where
+    R: Registry + Send + Sync + 'static,
+{
     pub data: Arc<Mutex<HashMap<String, Vec<RecordBatch>>>>,
-    pub actor_registry: Arc<dyn InjestSystem>,
+    pub actor_registry: Arc<R>,
 }
 
-impl LogFlightServer {
-    pub fn new(actor_registry: Arc<dyn InjestSystem>) -> Self {
-        LogFlightServer {
+impl<R> LogFlightServer<R>
+where
+    R: Registry + Send + Sync + 'static,
+{
+    pub fn new(actor_registry: Arc<R>) -> Self {
+        Self {
             data: Arc::new(Mutex::new(HashMap::new())),
             actor_registry,
         }

@@ -11,3 +11,5 @@ rs_cd.log
 .idea
 .svg
 *.db
+
+.direnv/*

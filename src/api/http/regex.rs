@@ -1,5 +1,4 @@
-use crate::platform::actor_factory::InjestSystem;
-use actix::{Addr, MailboxError, Message};
+use actix::{Actor, Addr, Handler, MailboxError, Message};
 use actix_web::web::{Data, Path};
 use actix_web::{HttpResponse, Resource, Responder, web};
 use serde_derive::{Deserialize, Serialize};
@@ -8,7 +7,8 @@ use std::fmt::{Debug, Display, Error, Formatter};
 use std::sync::Arc;
 use validator::{Validate, ValidationError, ValidationErrors};
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, ToSchema, Message)]
+#[rtype(result = "Result<(), ValidationErrors>")]
 pub struct RegexRequest {
     #[validate(length(min = 3, message = "Name must be greater than 3 chars"))]
     pub name: String,
@@ -51,10 +51,6 @@ pub struct GrokPattern {
     field: String,
     #[schema(example = ".*ERROR.*")]
     pattern_string: String,
-}
-
-impl Message for RegexRequest {
-    type Result = Result<(), ValidationErrors>;
 }
 
 enum ErrorType {
@@ -102,10 +98,15 @@ pub fn submit_new_pattern_factory() -> Resource {
     web::resource("/pattern").route(web::post().to(submit_new_pattern))
 }
 
-pub async fn submit_new_pattern(
-    data: Data<Arc<dyn InjestSystem>>,
+pub async fn submit_new_pattern<R>(
+    data: Data<Arc<R>>,
     req: web::Json<RegexRequest>,
-) -> impl Responder {
+) -> impl Responder
+where
+    R: Registry + Send + Sync + 'static,
+    R::Broadcaster: Actor + Handler<RegexRequest>,
+    R::FlightRegistry: Actor + Handler<CheckFlight>,
+{
     match validate_regex_pattern(&req.pattern) {
         Ok(_) => {
             let regex_request = req.into_inner();
@@ -149,11 +150,14 @@ pub fn validate_regex_pattern(patterns: &Vec<Pattern>) -> Result<(), ValidationE
     Ok(())
 }
 
-async fn check_if_flight_exists(
-    flight_registry_actor: Addr<FlightRegistry>,
+async fn check_if_flight_exists<F>(
+    flight_registry_actor: Addr<F>,
     team_id: String,
     flight: String,
-) -> Result<bool, std::io::Error> {
+) -> Result<bool, std::io::Error>
+where
+    F : Actor + Handler<CheckFlight>,
+{
     let exists = flight_registry_actor
         .send(CheckFlight {
             team_id: team_id.clone(),
@@ -182,7 +186,9 @@ pub struct FlightsList {
     flights: HashSet<String>,
 }
 
-async fn fetch_flights(path: Path<String>, data: Data<Arc<dyn InjestSystem>>) -> impl Responder {
+async fn fetch_flights(path: Path<String>, data: Data<Arc<dyn Registry<Broadcaster=(), Db=(), FlightRegistry=(), IcebergActor=(), Parser=(), Wal=()>>>) -> impl Responder
+
+{
     let team_id = path.into_inner();
     let flight_list = data
         .get_flight_registry_actor()
@@ -212,6 +218,7 @@ async fn fetch_flights(path: Path<String>, data: Data<Arc<dyn InjestSystem>>) ->
 
 use crate::application::actors::flight_registry::{CheckFlight, FlightRegistry, ListFlights};
 use regex::Regex;
+use serde_json::json;
 use tracing::{info, warn};
 use utoipa::ToSchema;
 
@@ -220,3 +227,4 @@ pub fn is_valid_regex(regex: &RegexPattern) -> bool {
 }
 
 use crate::api::http::regex::ErrorType::ActorError;
+use crate::platform::actor_factory::{ProdInjestRegistry, Registry};
