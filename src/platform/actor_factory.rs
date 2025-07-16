@@ -1,9 +1,9 @@
 // src/platform/injest_system.rs
 
-use actix::{Actor, Addr, Handler};
+use actix::{Actor, Addr, Context, Handler};
 use std::collections::HashMap;
 use std::sync::Arc;
-
+use arrow_flight::FlightData;
 use crate::api::http::regex::RegexRequest;
 use crate::application::actors::broadcast::{Broadcaster, RecordBatchWrapper};
 use crate::application::actors::db::{DbActor, GetPatternsForTenant, ReposReady, SaveSchema};
@@ -59,17 +59,17 @@ impl ActorFactory {
 
 // --- Generic Registry Trait --- //
 pub trait Registry {
-    type Db: Actor
-        + Sync
+    type Db: Actor<Context = Context<Self::Db>>
+    + Sync
         + Send
         + Handler<ReposReady>
         + Handler<GetPatternsForTenant>
         + Handler<SaveSchema>;
-    type Parser: Actor + Sync + Send + Handler<RegexRequest> + Handler<RecordBatchWrapper>;
-    type Wal: Actor + Sync + Send + Handler<RecordBatchWrapper>;
-    type IcebergActor: Actor + Sync + Send + Handler<FlushInstruction>;
-    type Broadcaster: Actor + Sync + Send + Handler<RecordBatchWrapper>;
-    type FlightRegistry: Actor
+    type Parser: Actor<Context = Context<Self::Parser>> + Sync + Send + Handler<RegexRequest> + Handler<RecordBatchWrapper>;
+    type Wal: Actor<Context = Context<Self::Wal>> + Sync + Send + Handler<RecordBatchWrapper>;
+    type IcebergActor: Actor<Context = Context<Self::IcebergActor>> + Sync + Send + Handler<FlushInstruction>;
+    type Broadcaster: Actor<Context = Context<Self::Broadcaster>> + Sync + Send + Handler<RecordBatchWrapper>;
+    type FlightRegistry: Actor<Context = Context<Self::FlightRegistry>>
         + Sync
         + Send
         + Handler<CheckFlight>
@@ -114,7 +114,7 @@ impl Registry for ProdInjestRegistry {
     fn get_iceberg_actor(&self) -> Addr<Self::IcebergActor> {
         self.iceberg_actor.clone()
     }
-    fn get_broadcaster_actor(&self) -> Addr<Broadcaster> {
+    fn get_broadcaster_actor(&self) -> Addr<Self::Broadcaster> {
         self.broadcaster.clone()
     }
     fn get_flight_registry_actor(&self) -> Addr<Self::FlightRegistry> {

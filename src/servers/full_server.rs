@@ -10,15 +10,16 @@ use tokio::sync::oneshot;
 use tokio::sync::oneshot::Sender;
 use tracing::info;
 use tracing::log::error;
+use crate::platform::actor_factory::Registry;
 
-pub struct FullServer {
+pub struct FullServer<R: Registry + Send + Sync + 'static> {
     pub repos: Arc<dyn RepositoryProvider>,
-    pub query_server: Option<QueryServer>,
-    pub injest_server: Option<InjestServer>,
+    pub query_server: Option<QueryServer<R>>,
+    pub injest_server: Option<InjestServer<R>>,
     pub _injest_server_shutdown_sender: Option<Sender<()>>,
 }
 
-impl PorosServer for FullServer {
+impl<R: Registry + Send + Sync> PorosServer for FullServer<R> {
     type Error = ServerError;
 
     fn configure_routes(_config: &mut ServiceConfig)

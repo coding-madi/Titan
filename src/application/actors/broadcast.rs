@@ -1,5 +1,5 @@
 use actix::Handler;
-use actix::{Actor, Addr, Context, Message};
+use actix::{Actor, Addr, Context};
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 use std::fmt::Display;
@@ -43,14 +43,14 @@ use crate::application::actors::wal::WalEntry;
 use std::sync::Arc;
 use validator::ValidationErrors;
 
-#[derive(Debug, Clone, Message)]
+#[derive(Debug, Clone, actix::Message)]
 #[rtype(result = "()")]
 pub struct RecordBatchWrapper {
     pub metadata: Metadata,
     pub data: Arc<RecordBatch>,
 }
 
-impl<'a> Handler<RecordBatchWrapper> for Broadcaster {
+impl Handler<RecordBatchWrapper> for Broadcaster {
     type Result = ();
 
     fn handle(&mut self, msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {

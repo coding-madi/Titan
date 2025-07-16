@@ -5,6 +5,7 @@ use crate::core::db::factory::database_factory::RepositoryProvider;
 use crate::core::db::repository::Schema;
 use actix::{Actor, AsyncContext, Context, Handler, Message, spawn};
 use std::sync::Arc;
+use async_trait::async_trait;
 use tracing::log::info;
 
 /// `DbActor` is an Actix actor responsible for handling all database operations.
@@ -123,6 +124,7 @@ pub struct SaveSchema {
     pub updated_at: chrono::NaiveDateTime,
 }
 
+#[async_trait]
 impl Handler<SaveSchema> for DbActor {
     type Result = ();
 

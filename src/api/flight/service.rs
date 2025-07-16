@@ -1,5 +1,5 @@
 use crate::application::actors::broadcast::{Metadata, RecordBatchWrapper};
-use crate::application::actors::db::SaveSchema;
+use crate::application::actors::db::{DbActor, SaveSchema};
 use crate::application::actors::flight_registry::{Fields, RegisterFlight};
 use actix::dev::Stream;
 use actix_web::web::Bytes;
@@ -17,6 +17,7 @@ use futures::stream;
 use futures_util::StreamExt;
 use std::vec;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
+use actix::Addr;
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
@@ -43,7 +44,7 @@ where
 }
 
 #[tonic::async_trait]
-impl FlightService for LogFlightServer {
+impl<R: Registry + Sync + Send> FlightService for LogFlightServer<R> {
     type HandshakeStream = Pin<Box<dyn Stream<Item = Result<HandshakeResponse, Status>> + Send>>;
     async fn handshake(
         &self,
@@ -251,6 +252,7 @@ impl FlightService for LogFlightServer {
                 };
 
                 // Persist the schema is database
+                let db  = self.actor_registry.get_db();
                 self.actor_registry.get_db().do_send(save_schema);
                 let fields: Vec<Fields> = vec![];
                 for field in schema.fields() {

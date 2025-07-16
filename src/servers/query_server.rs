@@ -18,11 +18,11 @@ use utoipa::OpenApi;
 use utoipa_redoc::{Redoc, Servable};
 use utoipa_swagger_ui::SwaggerUi;
 
-pub struct QueryServer {
-    pub actor_registry: Arc<dyn Registry<Broadcaster=(), Db=(), FlightRegistry=(), IcebergActor=(), Parser=(), Wal=()>>,
+pub struct QueryServer<R: Registry> {
+    pub actor_registry: Arc<R>,
 }
 
-impl PorosServer for QueryServer {
+impl<R: Registry + Send + Sync + 'static> PorosServer for QueryServer<R> {
     type Error = ServerError;
 
     fn configure_routes(_config: &mut ServiceConfig)

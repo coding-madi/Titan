@@ -9,7 +9,7 @@ use poros::application::actors::init::init_actors;
 use poros::core::db::init_repositories;
 use poros::core::logging::file_writer::FileWriter;
 use poros::core::logging::subscriber::{get_subscribers, init_subscriber};
-use poros::platform::actor_factory::InjestSystem;
+use poros::platform::actor_factory::{Registry};
 use poros::servers::full_server::FullServer;
 use poros::servers::injest_server::InjestServer;
 use poros::servers::query_server::QueryServer;
@@ -38,7 +38,7 @@ async fn main() -> std::io::Result<()> {
 
     let repositories = init_repositories(&config).await;
 
-    let actor_registry: Arc<dyn InjestSystem> = init_actors(&config, repositories.clone()).await;
+    let actor_registry = init_actors(&config, repositories.clone()).await;
 
     actor_registry.get_db().do_send(ReposReady {
         repos: repositories.clone(),
@@ -61,12 +61,12 @@ async fn main() -> std::io::Result<()> {
         }
         // Both query and flight servers initialization
         ALL => {
-            let injest_server: InjestServer = InjestServer {
+            let injest_server = InjestServer {
                 actor_registry: actor_registry.clone(),
                 _shutdown_handler: None,
                 repos: repositories.clone(),
             };
-            let query_server: QueryServer = QueryServer { actor_registry };
+            let query_server = QueryServer { actor_registry };
             let all = FullServer {
                 repos: repositories.clone(),
                 query_server: Some(query_server),

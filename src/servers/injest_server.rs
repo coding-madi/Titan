@@ -9,16 +9,16 @@ use tokio::{
 use tonic::transport::Server;
 use tracing::info;
 
-pub struct InjestServer {
-    pub actor_registry: Arc<dyn Registry<Broadcaster=(), Db=(), FlightRegistry=(), IcebergActor=(), Parser=(), Wal=()>>,
+pub struct InjestServer<R : Registry> {
+    pub actor_registry: Arc<R>,
     pub repos: Arc<dyn RepositoryProvider + Send + Sync>,
     pub _shutdown_handler: Option<Sender<()>>, // Hold the sender, else the sender is dropped and the receiver receives a None value and stops the server. // TODO: add the postgres database connection pool
 }
 
-impl InjestServer {
+impl<R: Registry + Send + Sync + 'static> InjestServer<R> {
     pub fn new(
         &self,
-        actor_registry: Arc<dyn Registry<Broadcaster=(), Db=(), FlightRegistry=(), IcebergActor=(), Parser=(), Wal=()>>,
+        actor_registry: Arc<R>,
         repos: Arc<dyn RepositoryProvider + Send + Sync>,
         _shutdown_handler: Option<Sender<()>>,
     ) -> Self {
@@ -50,7 +50,7 @@ fn get_flight_server_endpoint(config: &Settings) -> SocketAddr {
     socker_address
 }
 
-impl PorosServer for InjestServer {
+impl<R: Registry + Send + Sync + 'static> PorosServer for InjestServer<R> {
     type Error = ServerError;
 
     fn configure_routes(_config: &mut ServiceConfig)
@@ -139,7 +139,7 @@ use crate::servers::server::PorosServer;
 use tokio::sync::oneshot::Receiver;
 use tracing::log::error;
 
-impl InjestServer {
+impl<R: Registry + Send + Sync + 'static>  InjestServer<R> {
     async fn shutdown_handler(shutdown_rx: Receiver<()>) {
         shutdown_rx.await.ok();
         info!("Flight server shutdown gracefully!")

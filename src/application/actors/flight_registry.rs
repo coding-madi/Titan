@@ -1,4 +1,4 @@
-use actix::{Actor, Handler, Message};
+use actix::{Actor, Handler, Message, Context};
 use std::collections::{HashMap, HashSet};
 use std::io::Error;
 use tracing::info;
@@ -81,5 +81,21 @@ impl Handler<RegisterFlight> for FlightRegistry {
             .entry(msg.team_id)
             .or_default()
             .insert(msg.flight, msg.fields);
+    }
+}
+
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct FlightData {
+    pub id: String,
+    pub details: String,
+}
+
+impl Handler<FlightData> for FlightRegistry {
+    type Result = ();
+
+    fn handle(&mut self, msg: FlightData, ctx: &mut Self::Context) -> Self::Result {
+        todo!()
     }
 }

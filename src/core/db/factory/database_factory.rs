@@ -93,7 +93,7 @@ impl DatabasePool for SQLitePool {
 use crate::core::db::repository::SchemaRepository;
 use std::sync::Arc;
 
-pub trait RepositoryProvider: Send + Sync {
+pub trait RepositoryProvider: Send + Sync + 'static{
     fn schema_repository(&self) -> Arc<dyn SchemaRepository + Send + Sync>;
 }
 
