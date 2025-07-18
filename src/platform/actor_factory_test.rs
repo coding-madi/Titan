@@ -303,7 +303,6 @@ pub mod tests {
 
         let actor = OnTestActor::new(db.clone()).start();
         let result = actor.send(repo).await.unwrap();
-
         assert!(result.is_ok());
     }
 }

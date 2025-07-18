@@ -93,3 +93,103 @@ impl Display for Metadata {
         )
     }
 }
+
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
+    use crate::platform::actor_factory_test::tests::MockFactory;
+
+    #[test]
+    fn test_broadcast() {
+        // 1. Define individual fields
+        // Field 1: 'id' as a non-nullable 64-bit integer
+        let id_field = Field::new("id", DataType::Int64, false);
+
+        // Field 2: 'name' as a nullable string (Utf8)
+        let name_field = Field::new("name", DataType::Utf8, true);
+
+        // Field 3: 'timestamp' as a non-nullable timestamp with nanosecond precision and no timezone
+        let timestamp_field = Field::new(
+            "timestamp",
+            DataType::Timestamp(TimeUnit::Nanosecond, None),
+            false,
+        );
+
+        // Field 4: 'value' as a nullable 32-bit floating-point number
+        let value_field = Field::new("value", DataType::Float32, true);
+
+        // Field 5: 'is_active' as a non-nullable boolean
+        let is_active_field = Field::new("is_active", DataType::Boolean, false);
+
+        let fields = vec![
+            id_field,
+            name_field,
+            timestamp_field,
+            value_field,
+            is_active_field,
+        ];
+
+        let schema = Schema::new(fields);
+
+        if let Ok(field) = schema.field_with_name("name") {
+            println!("'name' field: {:?}", field);
+        }
+
+        if let Ok(field) = schema.field_with_name("id") {
+            println!("'id' field: {:?}", field);
+        }
+
+    }
+
+    #[actix::test]
+    async fn test_broadcaster_sends_record_batches() {
+        use arrow_array::{ArrayRef, Int64Array, RecordBatch};
+        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+
+        // Create schema
+        let schema = Arc::new(arrow_schema::Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+        ]));
+
+        // Create dummy RecordBatch
+        let id_array: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3]));
+        let batch = RecordBatch::try_new(schema.clone(), vec![id_array]).unwrap();
+
+        // Setup counter to track how many times ParsingActor is called
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        // Create 2 ParsingActors
+        let factory = MockFactory {};
+
+        let mock_wal_actor = MockFactory::create_wal();
+        let parsed_actors = MockFactory::create_parser();
+
+
+
+        // Start Broadcaster
+        let broadcaster = Broadcaster::new(parsed_actors).start();
+
+        // Send RecordBatchWrapper
+        let metadata = Metadata {
+            flight: "flight-123".to_string(),
+            buffer_id: 42,
+            schema: schema.clone(),
+            service_id: "svc".to_string(),
+        };
+        let wrapper = RecordBatchWrapper { metadata, data: Arc::new(batch) };
+
+        // Send 4 messages -> should round robin between two parsing actors
+        broadcaster.do_send(wrapper.clone());
+        broadcaster.do_send(wrapper.clone());
+        broadcaster.do_send(wrapper.clone());
+        broadcaster.do_send(wrapper);
+
+        // Allow time for messages to process
+        actix::clock::sleep(std::time::Duration::from_millis(200)).await;
+
+        let total_received = counter.load(Ordering::SeqCst);
+        assert_eq!(total_received, 4, "Expected 4 messages to be processed");
+    }
+}

@@ -5,6 +5,7 @@
 // This should be done on a mmap file and the metadata should be stored in Flatbuf.
 
 use actix::{Actor, Handler, Message};
+use crate::platform::actor_factory::Registry;
 
 pub struct IcebergWriter {
     _table: String,
