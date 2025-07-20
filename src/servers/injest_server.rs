@@ -9,16 +9,16 @@ use tokio::{
 use tonic::transport::Server;
 use tracing::info;
 
-pub struct InjestServer<R : Registry> {
-    pub actor_registry: Arc<R>,
+pub struct InjestServer {
+    pub actor_registry: Arc<Registry>,
     pub repos: Arc<dyn RepositoryProvider + Send + Sync>,
     pub _shutdown_handler: Option<Sender<()>>, // Hold the sender, else the sender is dropped and the receiver receives a None value and stops the server. // TODO: add the postgres database connection pool
 }
 
-impl<R: Registry + Send + Sync + 'static> InjestServer<R> {
+impl InjestServer {
     pub fn new(
         &self,
-        actor_registry: Arc<R>,
+        actor_registry: Arc<Registry>,
         repos: Arc<dyn RepositoryProvider + Send + Sync>,
         _shutdown_handler: Option<Sender<()>>,
     ) -> Self {
@@ -50,7 +50,7 @@ fn get_flight_server_endpoint(config: &Settings) -> SocketAddr {
     socker_address
 }
 
-impl<R: Registry + Send + Sync + 'static> PorosServer for InjestServer<R> {
+impl PorosServer for InjestServer {
     type Error = ServerError;
 
     fn configure_routes(_config: &mut ServiceConfig)
@@ -130,16 +130,16 @@ impl<R: Registry + Send + Sync + 'static> PorosServer for InjestServer<R> {
     }
 }
 
-use crate::api::flight::service::LogFlightServer;
+use crate::api::flight::flight_service::LogFlightServer;
 use crate::config::yaml_reader::Settings;
 use crate::core::db::factory::database_factory::RepositoryProvider;
 use crate::core::error::exception::server_error::ServerError;
-use crate::platform::actor_factory::{Registry};
+use crate::platform::registry::Registry;
 use crate::servers::server::PorosServer;
 use tokio::sync::oneshot::Receiver;
 use tracing::log::error;
 
-impl<R: Registry + Send + Sync + 'static>  InjestServer<R> {
+impl InjestServer {
     async fn shutdown_handler(shutdown_rx: Receiver<()>) {
         shutdown_rx.await.ok();
         info!("Flight server shutdown gracefully!")

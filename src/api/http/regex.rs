@@ -1,18 +1,19 @@
-use actix::{Actor, Addr, Handler, MailboxError, Message};
+use crate::application::actors::flight_registry::{
+    CheckFlight, FlightRegistryActorAddr, ListFlights,
+};
+use crate::platform::registry::Registry;
 use actix::dev::ToEnvelope;
-use actix_web::{web, HttpResponse, Responder, Resource};
-use serde_derive::{Deserialize, Serialize};
-use tracing::{info, warn};
-use utoipa::ToSchema;
-use validator::{Validate, ValidationError, ValidationErrors};
+use actix::{Actor, Addr, Handler, MailboxError, Message};
+use actix_web::web::{Data, Path};
+use actix_web::{HttpResponse, Resource, Responder, web};
 use regex::Regex;
+use serde_derive::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
-use actix_web::web::{Data, Path};
-use serde_json::json;
-use crate::application::actors::flight_registry::{CheckFlight, ListFlights};
-use crate::platform::actor_factory::{ProdInjestRegistry, Registry};
+use tracing::{info, warn};
+use utoipa::ToSchema;
+use validator::{Validate, ValidationError, ValidationErrors};
 
 /// ========== Models ==========
 
@@ -105,20 +106,13 @@ pub fn is_valid_regex(regex: &RegexPattern) -> bool {
     tag = "Patterns"
 )]
 pub fn submit_new_pattern_factory() -> Resource {
-    web::resource("/pattern").route(web::post().to(submit_new_pattern::<ProdInjestRegistry>))
+    web::resource("/pattern").route(web::post().to(submit_new_pattern))
 }
 
-pub async fn submit_new_pattern<R>(
-    data: Data<Arc<R>>,
+pub async fn submit_new_pattern(
+    data: Data<Arc<Registry>>,
     req: web::Json<RegexRequest>,
-) -> impl Responder
-where
-    R: Registry + Send + Sync + 'static,
-    R::Broadcaster: Actor + Handler<RegexRequest>,
-    R::FlightRegistry: Actor + Handler<CheckFlight>,
-    <R::Broadcaster as Actor>::Context: ToEnvelope<R::Broadcaster, RegexRequest>,
-    <R::FlightRegistry as Actor>::Context: ToEnvelope<R::FlightRegistry, CheckFlight>,
-{
+) -> impl Responder {
     if let Err(validation_errors) = validate_regex_pattern(&req.pattern) {
         return HttpResponse::BadRequest().json(validation_errors);
     }
@@ -126,18 +120,25 @@ where
     let regex_request = req.into_inner();
     let team_id = regex_request.tenant.clone();
     let flight = regex_request.flight_id.clone();
-    let flight_registry_actor = data.get_flight_registry_actor();
+    let flight_registry_actor = data.flight_registry_actor_addr.clone();
 
-    match check_if_flight_exists(flight_registry_actor, team_id, flight.clone()).await {
-        Ok(true) => {
-            data.get_broadcaster_actor().do_send(regex_request);
-            HttpResponse::Ok().json(format!("Regex submitted for {}", flight))
+    match flight_registry_actor {
+        FlightRegistryActorAddr::Real(flight_registry) => {
+            match check_if_flight_exists(flight_registry.clone(), team_id, flight.clone()).await {
+                Ok(true) => {
+                    // flight_registry.do_send(regex_request.clone());
+                    HttpResponse::Ok().json(format!("Regex submitted for {}", flight))
+                }
+                Ok(false) => HttpResponse::Conflict().json(format!(
+                    "Regex could not be submitted, Flight {} does not exist",
+                    flight
+                )),
+                Err(e) => {
+                    HttpResponse::NotFound().json(format!("Flight {} not found - {}", flight, e))
+                }
+            }
         }
-        Ok(false) => HttpResponse::Conflict().json(format!(
-            "Regex could not be submitted, Flight {} does not exist",
-            flight
-        )),
-        Err(e) => HttpResponse::NotFound().json(format!("Flight {} not found - {}", flight, e)),
+        _ => HttpResponse::InternalServerError().json("Internal server error"),
     }
 }
 
@@ -156,7 +157,9 @@ where
         .send(CheckFlight { team_id, flight })
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Actor error: {}", e)))?
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Handler error: {}", e)))
+        .map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::Other, format!("Handler error: {}", e))
+        })
 }
 
 /// ========== List Flights ==========
@@ -171,7 +174,7 @@ where
     tag = "Flights"
 )]
 pub fn get_all_flights_factory() -> Resource {
-    web::resource("/list-flights/{team_id}").route(web::get().to(fetch_flights::<ProdInjestRegistry>))
+    web::resource("/list-flights/{team_id}").route(web::get().to(fetch_flights))
 }
 
 #[derive(Serialize, ToSchema)]
@@ -180,30 +183,36 @@ pub struct FlightsList {
     flights: HashSet<String>,
 }
 
-pub async fn fetch_flights<R>(
-    path: Path<String>,
-    data: Data<Arc<R>>,
-) -> impl Responder
-where
-    R: Registry + Send + Sync + 'static,
-    R::FlightRegistry: Actor + Handler<ListFlights>,
-    <R::FlightRegistry as Actor>::Context: ToEnvelope<R::FlightRegistry, ListFlights>,
-{
+pub async fn fetch_flights(path: Path<String>, data: Data<Arc<Registry>>) -> impl Responder {
     let team_id = path.into_inner();
-    let actor = data.get_flight_registry_actor();
+    let actor = data.flight_registry_actor_addr.clone();
 
-    match actor.send(ListFlights { team_id: team_id.clone() }).await {
-        Ok(Ok(flights)) => {
-            info!("Flights for {}: {:?}", team_id, flights);
-            HttpResponse::Ok().json(FlightsList { flights })
+    match actor {
+        FlightRegistryActorAddr::Real(flight_registry) => {
+            let x = flight_registry
+                .send(ListFlights {
+                    team_id: team_id.clone(),
+                })
+                .await;
+            match x {
+                Ok(Ok(flights)) => {
+                    info!("Flights for {}: {:?}", team_id, flights);
+                    HttpResponse::Ok().json(FlightsList { flights })
+                }
+                Ok(Err(e)) => {
+                    warn!("Failed fetching flights: {}", e);
+                    HttpResponse::Ok().json("{\"Error\": \"Failed fetching flights\"}")
+                }
+                Err(e) => {
+                    warn!("Actor error for {}: {}", team_id, e);
+                    HttpResponse::NotFound().finish()
+                }
+            }
         }
-        Ok(Err(e)) => {
-            warn!("Failed fetching flights: {}", e);
-            HttpResponse::Ok().json("{\"Error\": \"Failed fetching flights\"}")
+        #[cfg(test)]
+        _ => {
+            unimplemented!()
         }
-        Err(e) => {
-            warn!("Actor error for {}: {}", team_id, e);
-            HttpResponse::NotFound().finish()
-        }
+        _ => HttpResponse::NotFound().finish(),
     }
 }

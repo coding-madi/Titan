@@ -45,6 +45,10 @@ num_cpus = "1.17.0"
 utoipa = {  version = "5.4.0" , features = ["openapi_extensions", "actix_extras"]}
 utoipa-redoc = { version = "6", features = ["actix-web"] }
 utoipa-swagger-ui = { version = "9", features = ["actix-web"] }
+mockall = "0.13.1"
+log = "0.4.27"
+futures-core = "0.3.31"
+http = "0.2.12"
 
 [dependencies.sqlx]
 version = "0.8.6"

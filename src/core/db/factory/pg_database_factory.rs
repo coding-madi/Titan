@@ -1,4 +1,4 @@
-use crate::config::database::DatabaseType;
+use crate::config::database_conf::DatabaseType;
 use crate::config::yaml_reader::Settings;
 use crate::core::db::factory::database_factory::{AnyPool, DatabaseFactory, PostgresRepositories};
 use crate::core::db::postgres::PostgresSchemaRepository;

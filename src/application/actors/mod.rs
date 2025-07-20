@@ -6,4 +6,6 @@ pub mod init;
 pub mod parser;
 pub mod wal;
 
+mod broadcast_test;
 pub mod flight_registry;
+pub mod wal_test;

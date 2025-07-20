@@ -1,45 +1,99 @@
-use actix::Handler;
-use actix::{Actor, Addr, Context};
+use actix::{Actor, Addr, AsyncContext, Context, Message};
+use actix::{ContextFutureSpawner, Handler, WrapFuture};
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 use std::fmt::Display;
 use tracing::trace;
 
-pub struct Broadcaster {
-    pub parser_registry: Vec<Addr<ParsingActor<WalEntry>>>,
-    pub next_shard_idx: usize, // Index to keep track of the next shard to send messages to
+#[derive(Clone, Message)]
+#[rtype(result = "()")]
+pub enum BroadcastActorAddr {
+    Real(Addr<BroadcastActor>),
+    #[cfg(test)]
+    Mock(Addr<MockBroadcastActor>),
+    Empty,
 }
 
-impl Broadcaster {
-    pub fn new(parser_actor: Vec<Addr<ParsingActor<WalEntry>>>) -> Broadcaster {
-        Self {
-            next_shard_idx: 0,
-            parser_registry: parser_actor,
+impl BroadcastActorAddr {
+    pub fn regex_request(&self, regex_request: RegexRequest) {
+        match self {
+            BroadcastActorAddr::Real(addr) => addr.do_send(regex_request),
+            #[cfg(test)]
+            BroadcastActorAddr::Mock(addr) => addr.do_send(regex_request),
+            _ => {}
+        }
+    }
+
+    pub fn record_batch_wrapper(&self, record_batch_wrapper: RecordBatchWrapper) {
+        match self {
+            BroadcastActorAddr::Real(addr) => addr.do_send(record_batch_wrapper),
+            #[cfg(test)]
+            BroadcastActorAddr::Mock(addr) => addr.do_send(record_batch_wrapper),
+            _ => {}
         }
     }
 }
 
-impl Actor for Broadcaster {
+#[derive(Clone)]
+pub struct BroadcastActor {
+    pub next_shard_idx: usize, // Index to keep track of the next shard to send messages to
+    pub registry_address: Addr<Registry>,
+}
+
+impl BroadcastActor {
+    pub fn new(registry_address: Addr<Registry>) -> BroadcastActor {
+        Self {
+            next_shard_idx: 0,
+            registry_address,
+        }
+    }
+}
+
+impl Actor for BroadcastActor {
     type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        let address = ctx.address();
+        let registry_address = self.registry_address.clone();
+        registry_address.do_send(BroadcastActorAddr::Real(address));
+        trace!("BroadcastActor started");
+    }
 }
 
 // We need to initialize the actor and pass the handles to the Query server.
 // The query server will then use these handles to send messages to the regex actors.
 // The regex actors will then process the messages and return results to the query server.
-impl Handler<RegexRequest> for Broadcaster {
+impl Handler<RegexRequest> for BroadcastActor {
     type Result = Result<(), ValidationErrors>;
 
     fn handle(&mut self, regex_request: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
-        for i in 0..self.parser_registry.len() {
-            self.parser_registry[i].do_send(regex_request.clone())
-        }
+        // let x = self.registry_address.send(FetchParserActor);
+        let x = self.clone();
+        let fut = async move {
+            match x.registry_address.send(FetchParserActor).await {
+                Ok(parser) => match parser {
+                    Ok(pattern) => match pattern {
+                        ParserActorAddr::Real(parser) => {
+                            for i in 0..parser.len() {
+                                parser[i].do_send(regex_request.clone())
+                            }
+                        }
+                        #[cfg(test)]
+                        ParserActorAddr::Mock(add) => {}
+                        _ => {}
+                    },
+                    _ => {}
+                },
+                _ => {}
+            }
+        };
+        fut.into_actor(self).spawn(_ctx);
         Ok(())
     }
 }
 
 use crate::api::http::regex::RegexRequest;
-use crate::application::actors::parser::ParsingActor;
-use crate::application::actors::wal::WalEntry;
+use crate::platform::registry::{FetchParserActor, ParserActorAddr, Registry};
 use std::sync::Arc;
 use validator::ValidationErrors;
 
@@ -50,29 +104,42 @@ pub struct RecordBatchWrapper {
     pub data: Arc<RecordBatch>,
 }
 
-impl Handler<RecordBatchWrapper> for Broadcaster {
+impl Handler<RecordBatchWrapper> for BroadcastActor {
     type Result = ();
 
-    fn handle(&mut self, msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
-        if self.parser_registry.is_empty() {
-            eprintln!("No regex handlers available to distribute RecordBatchWrapper.");
-            return;
-        }
-
-        // Get the address of the next shard in a round-robin fashion
-        let current_shard_idx = self.next_shard_idx;
-        let parser_handle = &self.parser_registry[current_shard_idx];
-
-        // Update the index for the next message
-        self.next_shard_idx = (self.next_shard_idx + 1) % self.parser_registry.len();
-
-        // Send the RecordBatch to the selected RegexActor
-        // Use `do_send` for fire-and-forget, or `send().await` if you need to wait for a response
-        trace!(
-            "Dispatched RecordBatchWrapper for key '{}' to shard index {}",
-            &msg.metadata, current_shard_idx
-        );
-        parser_handle.do_send(msg);
+    fn handle(
+        &mut self,
+        record_batch: RecordBatchWrapper,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        let mut broadcast_actor = self.clone();
+        let fut = async move {
+            match broadcast_actor
+                .registry_address
+                .send(FetchParserActor)
+                .await
+            {
+                Ok(parser) => match parser {
+                    Ok(pattern) => match pattern {
+                        ParserActorAddr::Real(parser) => {
+                            let current_shard_idx = &mut broadcast_actor.next_shard_idx;
+                            let current_shard_idx =
+                                (current_shard_idx.wrapping_add(1)) % parser.len();
+                            parser
+                                .get(current_shard_idx)
+                                .unwrap()
+                                .do_send(record_batch.clone());
+                        }
+                        #[cfg(test)]
+                        ParserActorAddr::Mock(add) => {}
+                        _ => {}
+                    },
+                    _ => {}
+                },
+                _ => {}
+            }
+        };
+        fut.into_actor(self).spawn(_ctx);
     }
 }
 
@@ -94,102 +161,30 @@ impl Display for Metadata {
     }
 }
 
+#[cfg(test)]
+pub struct MockBroadcastActor {
+    pub registry_address: Addr<Registry>,
+}
 
 #[cfg(test)]
-pub mod tests {
-    use super::*;
-    use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
-    use crate::platform::actor_factory_test::tests::MockFactory;
+impl Actor for MockBroadcastActor {
+    type Context = Context<Self>;
+}
 
-    #[test]
-    fn test_broadcast() {
-        // 1. Define individual fields
-        // Field 1: 'id' as a non-nullable 64-bit integer
-        let id_field = Field::new("id", DataType::Int64, false);
+#[cfg(test)]
+impl Handler<RegexRequest> for MockBroadcastActor {
+    type Result = Result<(), ValidationErrors>;
 
-        // Field 2: 'name' as a nullable string (Utf8)
-        let name_field = Field::new("name", DataType::Utf8, true);
-
-        // Field 3: 'timestamp' as a non-nullable timestamp with nanosecond precision and no timezone
-        let timestamp_field = Field::new(
-            "timestamp",
-            DataType::Timestamp(TimeUnit::Nanosecond, None),
-            false,
-        );
-
-        // Field 4: 'value' as a nullable 32-bit floating-point number
-        let value_field = Field::new("value", DataType::Float32, true);
-
-        // Field 5: 'is_active' as a non-nullable boolean
-        let is_active_field = Field::new("is_active", DataType::Boolean, false);
-
-        let fields = vec![
-            id_field,
-            name_field,
-            timestamp_field,
-            value_field,
-            is_active_field,
-        ];
-
-        let schema = Schema::new(fields);
-
-        if let Ok(field) = schema.field_with_name("name") {
-            println!("'name' field: {:?}", field);
-        }
-
-        if let Ok(field) = schema.field_with_name("id") {
-            println!("'id' field: {:?}", field);
-        }
-
+    fn handle(&mut self, _msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
+        todo!()
     }
+}
 
-    #[actix::test]
-    async fn test_broadcaster_sends_record_batches() {
-        use arrow_array::{ArrayRef, Int64Array, RecordBatch};
-        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+#[cfg(test)]
+impl Handler<RecordBatchWrapper> for MockBroadcastActor {
+    type Result = ();
 
-        // Create schema
-        let schema = Arc::new(arrow_schema::Schema::new(vec![
-            Field::new("id", DataType::Int64, false),
-        ]));
-
-        // Create dummy RecordBatch
-        let id_array: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3]));
-        let batch = RecordBatch::try_new(schema.clone(), vec![id_array]).unwrap();
-
-        // Setup counter to track how many times ParsingActor is called
-        let counter = Arc::new(AtomicUsize::new(0));
-
-        // Create 2 ParsingActors
-        let factory = MockFactory {};
-
-        let mock_wal_actor = MockFactory::create_wal();
-        let parsed_actors = MockFactory::create_parser();
-
-
-
-        // Start Broadcaster
-        let broadcaster = Broadcaster::new(parsed_actors).start();
-
-        // Send RecordBatchWrapper
-        let metadata = Metadata {
-            flight: "flight-123".to_string(),
-            buffer_id: 42,
-            schema: schema.clone(),
-            service_id: "svc".to_string(),
-        };
-        let wrapper = RecordBatchWrapper { metadata, data: Arc::new(batch) };
-
-        // Send 4 messages -> should round robin between two parsing actors
-        broadcaster.do_send(wrapper.clone());
-        broadcaster.do_send(wrapper.clone());
-        broadcaster.do_send(wrapper.clone());
-        broadcaster.do_send(wrapper);
-
-        // Allow time for messages to process
-        actix::clock::sleep(std::time::Duration::from_millis(200)).await;
-
-        let total_received = counter.load(Ordering::SeqCst);
-        assert_eq!(total_received, 4, "Expected 4 messages to be processed");
+    fn handle(&mut self, _msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
+        todo!()
     }
 }

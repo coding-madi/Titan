@@ -1,15 +1,14 @@
 use poros::config::yaml_reader::ServerType::{ALL, INJEST, QUERY};
 use poros::config::yaml_reader::read_configuration;
 use poros::version::print_version;
-use std::sync::Arc;
 
 use clap::Parser;
-use poros::application::actors::db::ReposReady;
+use poros::application::actors::db::DbActorAddr::Real;
+use poros::application::actors::db::{DbActorAddr, ReposReady};
 use poros::application::actors::init::init_actors;
 use poros::core::db::init_repositories;
 use poros::core::logging::file_writer::FileWriter;
 use poros::core::logging::subscriber::{get_subscribers, init_subscriber};
-use poros::platform::actor_factory::{Registry};
 use poros::servers::full_server::FullServer;
 use poros::servers::injest_server::InjestServer;
 use poros::servers::query_server::QueryServer;
@@ -29,6 +28,7 @@ struct Args {
 async fn main() -> std::io::Result<()> {
     let _args = Args::parse();
     print_version();
+
     // TODO: implement log rotation
     // Log file appender and tracer configuration
     let file_writer = FileWriter::new("poros.log");
@@ -36,13 +36,21 @@ async fn main() -> std::io::Result<()> {
     init_subscriber(subscriber);
     let config = read_configuration();
 
+    // create repositories for DB
     let repositories = init_repositories(&config).await;
 
+    // factory for creating actors
     let actor_registry = init_actors(&config, repositories.clone()).await;
+    let db_actor_addr = actor_registry.db_actor_addr.clone();
 
-    actor_registry.get_db().do_send(ReposReady {
-        repos: repositories.clone(),
-    });
+    match db_actor_addr {
+        Real(addr) => {
+            addr.do_send(ReposReady {
+                repos: repositories.clone(),
+            });
+        }
+        _ => {}
+    }
 
     match config.server {
         // Flight server initialization

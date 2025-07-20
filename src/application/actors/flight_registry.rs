@@ -1,22 +1,50 @@
-use actix::{Actor, Handler, Message, Context};
+#[cfg(test)]
+use crate::application::actors::parser::RegexRequest;
+use crate::platform::registry::Registry;
+use actix::{Actor, Addr, AsyncContext};
+use actix::{Handler, Message};
+use actix_rt::spawn;
 use std::collections::{HashMap, HashSet};
 use std::io::Error;
 use tracing::info;
+#[cfg(test)]
+use validator::ValidationErrors;
+
+#[derive(Clone, Message)]
+#[rtype(result = "()")]
+pub enum FlightRegistryActorAddr {
+    Real(Addr<FlightRegistry>),
+    #[cfg(test)]
+    Mock(Addr<MockFlightRegistry>),
+    Empty,
+}
 
 pub struct FlightRegistry {
     pub flights: HashMap<String, HashMap<String, Vec<Fields>>>,
+    pub registry: Addr<Registry>,
 }
 
 impl FlightRegistry {
-    pub async fn new() -> Self {
+    pub async fn new(registry: Addr<Registry>) -> Self {
         Self {
             flights: HashMap::new(),
+            registry,
         }
     }
 }
 
 impl Actor for FlightRegistry {
     type Context = actix::Context<Self>;
+
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        let address = _ctx.address();
+        let registry_address = self.registry.clone();
+        spawn(async move {
+            // let pool = settings_for_spawn.connection_pool().await;
+            registry_address.do_send(FlightRegistryActorAddr::Real(address));
+        });
+        info!("Started FlightRegistry");
+    }
 }
 
 #[derive(Message)]
@@ -84,7 +112,6 @@ impl Handler<RegisterFlight> for FlightRegistry {
     }
 }
 
-
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct FlightData {
@@ -96,6 +123,46 @@ impl Handler<FlightData> for FlightRegistry {
     type Result = ();
 
     fn handle(&mut self, msg: FlightData, ctx: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
+}
+
+#[cfg(test)]
+pub struct MockFlightRegistry {
+    pub registry_address: Addr<Registry>,
+}
+
+#[cfg(test)]
+impl MockFlightRegistry {}
+
+#[cfg(test)]
+impl Actor for MockFlightRegistry {
+    type Context = actix::Context<Self>;
+}
+
+#[cfg(test)]
+impl Handler<CheckFlight> for MockFlightRegistry {
+    type Result = std::result::Result<bool, Error>;
+
+    fn handle(&mut self, flight_check: CheckFlight, _ctx: &mut Self::Context) -> Self::Result {
+        unimplemented!()
+    }
+}
+
+#[cfg(test)]
+impl Handler<ListFlights> for MockFlightRegistry {
+    type Result = Result<HashSet<String>, Error>;
+
+    fn handle(&mut self, msg: ListFlights, ctx: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
+}
+
+#[cfg(test)]
+impl Handler<RegexRequest> for MockFlightRegistry {
+    type Result = Result<(), ValidationErrors>;
+
+    fn handle(&mut self, msg: RegexRequest, ctx: &mut Self::Context) -> Self::Result {
         todo!()
     }
 }

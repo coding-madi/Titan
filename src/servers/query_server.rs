@@ -2,7 +2,7 @@ use crate::api::http::health::get_health_endpoint_factory;
 use crate::api::http::regex::{get_all_flights_factory, submit_new_pattern_factory};
 use crate::config::yaml_reader::Settings;
 use crate::core::error::exception::server_error::ServerError;
-use crate::platform::actor_factory::{ Registry};
+use crate::platform::registry::Registry;
 use crate::servers::server::PorosServer;
 use actix_web::web::{Data, ServiceConfig};
 use actix_web::{App, HttpServer, web};
@@ -18,11 +18,11 @@ use utoipa::OpenApi;
 use utoipa_redoc::{Redoc, Servable};
 use utoipa_swagger_ui::SwaggerUi;
 
-pub struct QueryServer<R: Registry> {
-    pub actor_registry: Arc<R>,
+pub struct QueryServer {
+    pub actor_registry: Arc<Registry>,
 }
 
-impl<R: Registry + Send + Sync + 'static> PorosServer for QueryServer<R> {
+impl PorosServer for QueryServer {
     type Error = ServerError;
 
     fn configure_routes(_config: &mut ServiceConfig)

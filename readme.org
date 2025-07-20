@@ -5,7 +5,7 @@
 The linking takes most of the time during the development cycle. A faster linker would go a long way.
 
 #+BEGIN_SRC
-sudo yum install lld clang
+sudo yum install lld clang openssl-develop flatc libstdc++.so.6
 #+END_SRC
 
 Add the below linkers to the =.cargo/config.toml= file

@@ -5,7 +5,7 @@ use std::path::Path;
 use tracing::log::info;
 
 #[derive(Deserialize, Clone)]
-pub struct DatabaseSettings {
+pub struct DatabaseConf {
     pub database_type: DatabaseType,
     pub host: String,
     pub port: u16,
@@ -30,7 +30,7 @@ impl DatabaseType {
     }
 }
 
-impl DatabaseSettings {
+impl DatabaseConf {
     pub fn connection_string(&self) -> String {
         match self.database_type {
             DatabaseType::Postgres => {

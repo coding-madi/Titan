@@ -1,0 +1,21 @@
+meta {
+  name: ========== Handlers ==========
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/pattern
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "flight_id": "",
+    "log_group": "",
+    "name": "",
+    "pattern": [],
+    "tenant": ""
+  }
+}

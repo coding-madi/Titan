@@ -1,3 +1,3 @@
-pub mod database;
-pub mod flight;
+pub mod database_conf;
+pub mod flight_conf;
 pub mod yaml_reader;

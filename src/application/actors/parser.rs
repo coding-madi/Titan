@@ -1,57 +1,66 @@
-use actix::dev::ToEnvelope;
-use actix::{Actor, Addr, Context, Handler};
+use actix::{
+    Actor, Addr, AsyncContext, Context, ContextFutureSpawner, Handler, Message, WrapFuture,
+};
 use arrow::datatypes::Schema;
 use arrow_array::{Array, BooleanArray, StringArray};
 use std::collections::HashMap;
-use tracing::log::info;
+use std::thread::spawn;
 use validator::ValidationErrors;
 
 pub(crate) use crate::api::http::regex::{Pattern, RegexRequest};
 use crate::application::actors::broadcast::RecordBatchWrapper;
 
-pub struct ParsingActor<WL: Actor + Sync + Send + Handler<RecordBatchWrapper>> {
-    pub patterns: HashMap<String, Vec<Pattern>>, // flight_id → patterns
-    pub schema: HashMap<String, Schema>,         // service_id → schema
-    pub log_writer: Addr<WL>,
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub enum ParserActorAddr {
+    Real(Vec<Addr<ParsingActor>>),
+    #[cfg(test)]
+    Mock(Vec<Addr<MockParsingActor>>),
+    Empty,
 }
 
-impl<WL> ParsingActor<WL>
-where
-    WL: Actor + Sync + Send + Handler<RecordBatchWrapper>,
-    WL::Context: ToEnvelope<WL, RecordBatchWrapper>,
-{
-    pub fn default(log_writer: Addr<WL>) -> Self {
+#[derive(Clone)]
+pub struct ParsingActor {
+    pub patterns: HashMap<String, Vec<Pattern>>, // flight_id → patterns
+    pub schema: HashMap<String, Schema>,         // service_id → schema
+    pub registry_address: Addr<Registry>,
+}
+
+impl ParsingActor {
+    pub fn default(registry_address: Addr<Registry>) -> Self {
         Self {
             patterns: HashMap::new(),
             schema: HashMap::new(),
-            log_writer,
+            registry_address,
         }
     }
 
-    pub fn new(team_id: String, log_writer: Addr<WL>) -> Self {
+    pub fn new(team_id: String, registry_address: Addr<Registry>) -> Self {
         let patterns = get_patterns_from_database(&team_id);
         let schema = get_flight_and_schemas(&team_id);
 
         Self {
             patterns,
             schema,
-            log_writer,
+            registry_address,
         }
     }
 }
 
-impl<WL: Actor + Sync + Send + Handler<RecordBatchWrapper>> Actor for ParsingActor<WL> {
+impl Actor for ParsingActor {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("ParsingActor started")
+        let registry_address = self.registry_address.clone();
+        let address = _ctx.address();
+        // let pool = settings_for_spawn.connection_pool().await;
+        registry_address.do_send(ParserActorAddr::Real(vec![address]));
+        trace!("ParsingActor started")
     }
 }
 
 // Handle regex rule registration
-impl<WL: Actor + Sync + Send + Handler<RecordBatchWrapper>> Handler<RegexRequest>
-    for ParsingActor<WL>
-{
+impl Handler<RegexRequest> for ParsingActor {
     type Result = Result<(), ValidationErrors>;
 
     fn handle(&mut self, msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
@@ -62,57 +71,90 @@ impl<WL: Actor + Sync + Send + Handler<RecordBatchWrapper>> Handler<RegexRequest
 }
 
 use arrow_array::builder::BooleanBuilder;
+use futures_util::SinkExt;
+use log::error;
 
 // Handle incoming data for parsing
-impl<WL> Handler<RecordBatchWrapper> for ParsingActor<WL>
-where
-    WL: Actor + Sync + Send + Handler<RecordBatchWrapper>,
-    WL::Context: ToEnvelope<WL, RecordBatchWrapper>,
-{
+impl Handler<RecordBatchWrapper> for ParsingActor {
     type Result = ();
 
     fn handle(&mut self, record: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
         let service_id = &record.metadata.service_id;
-
-        let Some(patterns) = self.patterns.get(service_id) else {
-            // No patterns found, forward as-is
-            self.log_writer.do_send(record);
-            return;
+        let parser = self.clone();
+        let fut = async move {
+            let registry_address = parser.registry_address.clone();
+            let Ok(result) = registry_address.send(FetchWalActor).await else {
+                error!("Failed to fetch WalActorAddr from Registry");
+                return;
+            };
+            let Ok(address) = result else {
+                error!("Failed to fetch WalActorAddr from Registry");
+                return;
+            };
+            match address {
+                WalActorAddr::Real(wal_actors) => {
+                    wal_actors.do_send(record);
+                }
+                #[cfg(test)]
+                WalActorAddr::Mock(wal_actors) => {
+                    wal_actors.do_send(record);
+                }
+                _ => {}
+            }
         };
 
-        for pattern in patterns {
-            match pattern {
-                Pattern::RegexPattern(regex_pattern) => {
-                    let column_name = "event_type";
-                    let column_index = record
-                        .data
-                        .schema()
-                        .index_of(column_name)
-                        .map_err(|e| format!("Column not found '{}': {:?}", column_name, e))
-                        .unwrap();
+        fut.into_actor(self).spawn(_ctx);
 
-                    let text_array = record
-                        .data
-                        .column(column_index)
-                        .as_any()
-                        .downcast_ref::<StringArray>()
-                        .ok_or_else(|| format!("Column '{}' is not a StringArray", column_name))
-                        .unwrap();
-                    let matches = fast_regex_match(text_array, ".*").unwrap();
-                    info!("Regex application succeeded");
-                }
-                Pattern::GrokPattern(_grok) => {
-                    // TODO: Implement Grok parsing if needed
-                }
-            }
-        }
-
-        self.log_writer.do_send(record);
+        //     let Some(patterns) = self.patterns.get(service_id).clone() else {
+        //         // No patterns found, forward as-is
+        //         match &registry.wal_actor_addr {
+        //             WalActorAddr::Real(wal_actors) => {
+        //                 wal_actors.do_send(record);
+        //             }
+        //             #[cfg(test)]
+        //             WalActorAddr::Mock(wal_actors) => {
+        //                 wal_actors.do_send(record);
+        //             }
+        //             _ => {}
+        //         }
+        //
+        //         return;
+        //     };
+        //
+        //     for pattern in patterns {
+        //         match pattern {
+        //             Pattern::RegexPattern(regex_pattern) => {
+        //                 let column_name = "event_type";
+        //                 let column_index = record
+        //                     .data
+        //                     .schema()
+        //                     .index_of(column_name)
+        //                     .map_err(|e| format!("Column not found '{}': {:?}", column_name, e))
+        //                     .unwrap();
+        //
+        //                 let text_array = record
+        //                     .data
+        //                     .column(column_index)
+        //                     .as_any()
+        //                     .downcast_ref::<StringArray>()
+        //                     .ok_or_else(|| format!("Column '{}' is not a StringArray", column_name))
+        //                     .unwrap();
+        //                 let matches = fast_regex_match(text_array, ".*").unwrap();
+        //                 info!("Regex application succeeded");
+        //             }
+        //             Pattern::GrokPattern(_grok) => {
+        //                 // TODO: Implement Grok parsing if needed
+        //             }
+        //         }
+        //     }
     }
 }
 
 // Apply a single RegexPattern to the "event_type" column
+use crate::application::actors::wal::WalActorAddr;
+use crate::platform::registry::{FetchWalActor, Registry};
 use regex::Regex;
+use tracing::trace;
 
 fn fast_regex_match(text_array: &StringArray, pattern: &str) -> Result<BooleanArray, String> {
     let regex = Regex::new(pattern).map_err(|e| format!("Invalid regex: {e}"))?;
@@ -137,4 +179,44 @@ fn get_patterns_from_database(_team_id: &String) -> HashMap<String, Vec<Pattern>
 #[allow(dead_code)]
 fn get_flight_and_schemas(_team_id: &String) -> HashMap<String, Schema> {
     unimplemented!()
+}
+
+#[cfg(test)]
+pub struct MockParsingActor {
+    pub registry_address: Addr<Registry>,
+}
+
+#[cfg(test)]
+impl MockParsingActor {
+    pub fn new(registry_address: Addr<Registry>) -> Self {
+        Self { registry_address }
+    }
+}
+
+#[cfg(test)]
+impl Actor for MockParsingActor {
+    type Context = Context<Self>;
+
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        let registry_address = self.registry_address.clone();
+        let address = _ctx.address();
+        registry_address.do_send(ParserActorAddr::Mock(vec![address.clone()]));
+        trace!("MockParsingActor started")
+    }
+}
+
+#[cfg(test)]
+impl Handler<RecordBatchWrapper> for MockParsingActor {
+    type Result = ();
+    fn handle(&mut self, _: RecordBatchWrapper, _: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
+}
+
+#[cfg(test)]
+impl Handler<RegexRequest> for MockParsingActor {
+    type Result = Result<(), ValidationErrors>;
+    fn handle(&mut self, _: RegexRequest, _: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
 }

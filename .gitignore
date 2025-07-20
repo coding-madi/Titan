@@ -11,5 +11,6 @@ rs_cd.log
 .idea
 .svg
 *.db
-
+result-bin
 .direnv/*
+documentation/guides/dummy_data/arrow/

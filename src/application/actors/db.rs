@@ -1,12 +1,61 @@
 // Changed from SyncContext
 
-use crate::config::database::DatabaseSettings;
+use crate::config::database_conf::DatabaseConf;
 use crate::core::db::factory::database_factory::RepositoryProvider;
 use crate::core::db::repository::Schema;
-use actix::{Actor, AsyncContext, Context, Handler, Message, spawn};
-use std::sync::Arc;
+use crate::platform::registry::Registry;
+use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, spawn};
 use async_trait::async_trait;
+use log::trace;
+use std::sync::Arc;
 use tracing::log::info;
+
+#[derive(Clone, Message)]
+#[rtype(result = "()")]
+pub enum DbActorAddr {
+    Real(Addr<DbActor>),
+    #[cfg(test)]
+    Mock(Addr<MockDbActor>),
+    Empty,
+}
+
+impl DbActorAddr {
+    pub async fn send_repo_ready(
+        &self,
+        repos_ready: ReposReady,
+    ) -> Result<(), actix::MailboxError> {
+        match self {
+            DbActorAddr::Real(addr) => addr.send(repos_ready).await,
+            #[cfg(test)]
+            DbActorAddr::Mock(addr) => addr.send(repos_ready).await,
+            _ => Ok(()),
+        }
+    }
+
+    pub async fn send_get_patterns_for_tenant(
+        &self,
+        get_patterns_for_tenant: GetPatternsForTenant,
+    ) -> Result<Vec<String>, actix::MailboxError> {
+        match self {
+            DbActorAddr::Real(addr) => addr.send(get_patterns_for_tenant).await,
+            #[cfg(test)]
+            DbActorAddr::Mock(addr) => addr.send(get_patterns_for_tenant).await,
+            _ => Ok(vec![]),
+        }
+    }
+
+    pub async fn send_save_schema(
+        &self,
+        save_schema: SaveSchema,
+    ) -> Result<(), actix::MailboxError> {
+        match self {
+            DbActorAddr::Real(addr) => addr.send(save_schema).await,
+            #[cfg(test)]
+            DbActorAddr::Mock(addr) => addr.send(save_schema).await,
+            _ => Ok(()),
+        }
+    }
+}
 
 /// `DbActor` is an Actix actor responsible for handling all database operations.
 /// It holds an `Arc` to a `RepositoryProvider` trait object, allowing it to interact
@@ -14,6 +63,7 @@ use tracing::log::info;
 #[derive(Clone)]
 pub struct DbActor {
     repos: Arc<dyn RepositoryProvider>,
+    pub registry: Addr<Registry>,
 }
 
 /// Creates a new `DbActor` instance.
@@ -29,10 +79,11 @@ pub struct DbActor {
 ///             concrete repository implementations.
 impl DbActor {
     pub async fn new(
-        _database_settings: DatabaseSettings,
+        _database_settings: DatabaseConf,
         repos: Arc<dyn RepositoryProvider>,
+        registry: Addr<Registry>,
     ) -> Self {
-        Self { repos }
+        Self { repos, registry }
     }
 }
 
@@ -50,11 +101,14 @@ impl Actor for DbActor {
     fn started(&mut self, ctx: &mut Self::Context) {
         // let settings_for_spawn = self.database_settings.clone();
         let address = ctx.address();
+        let registry_address = self.registry.clone();
         let repos = self.repos.clone(); // ✅ clone the field, not self
         spawn(async move {
             // let pool = settings_for_spawn.connection_pool().await;
             let _ = address.send(ReposReady { repos });
+            registry_address.do_send(DbActorAddr::Real(address));
         });
+        trace!("DbActor started.");
     }
 }
 
@@ -62,13 +116,13 @@ impl Actor for DbActor {
 /// This is primarily used during the actor's startup phase (`started` method)
 /// to ensure the `repos` field is properly established within the actor's context.
 #[derive(Message)]
-#[rtype(result = "Result<(), ()>")]
+#[rtype(result = "()")]
 pub struct ReposReady {
     pub repos: Arc<dyn RepositoryProvider + Send + Sync>,
 }
 
 impl Handler<ReposReady> for DbActor {
-    type Result = Result<(), ()>;
+    type Result = ();
 
     /// Handles the `ReposReady` message.
     ///
@@ -78,7 +132,6 @@ impl Handler<ReposReady> for DbActor {
     /// the actor is fully operational.
     fn handle(&mut self, msg: ReposReady, _ctx: &mut Self::Context) -> Self::Result {
         self.repos = msg.repos;
-        Ok(())
     }
 }
 
@@ -184,3 +237,40 @@ impl Handler<GetSchema> for DbActor {
     }
 }
 */
+
+#[cfg(test)]
+pub struct MockDbActor {
+    pub registry_address: Addr<Registry>,
+}
+
+#[cfg(test)]
+impl Actor for MockDbActor {
+    type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        self.registry_address
+            .do_send(DbActorAddr::Mock(ctx.address()));
+    }
+}
+
+#[cfg(test)]
+impl Handler<ReposReady> for MockDbActor {
+    type Result = ();
+    fn handle(&mut self, _msg: ReposReady, _: &mut Self::Context) -> Self::Result {}
+}
+
+#[cfg(test)]
+impl Handler<SaveSchema> for MockDbActor {
+    type Result = ();
+    fn handle(&mut self, _: SaveSchema, _: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
+}
+
+#[cfg(test)]
+impl Handler<GetPatternsForTenant> for MockDbActor {
+    type Result = Vec<String>;
+    fn handle(&mut self, _: GetPatternsForTenant, _: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
+}

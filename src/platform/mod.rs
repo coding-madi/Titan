@@ -1,4 +1,2 @@
-pub mod actor_factory;
-
+pub mod registry;
 pub mod wal;
-pub mod actor_factory_test;

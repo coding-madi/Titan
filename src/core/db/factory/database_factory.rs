@@ -1,4 +1,4 @@
-use crate::config::database::DatabaseType;
+use crate::config::database_conf::DatabaseType;
 use crate::config::yaml_reader::Settings;
 use crate::core::db::factory::pg_database_factory::PGDatabaseFactory;
 use crate::core::db::factory::sqlite_database_factory::SqliteDatabaseFactory;
@@ -93,7 +93,7 @@ impl DatabasePool for SQLitePool {
 use crate::core::db::repository::SchemaRepository;
 use std::sync::Arc;
 
-pub trait RepositoryProvider: Send + Sync + 'static{
+pub trait RepositoryProvider: Send + Sync + 'static {
     fn schema_repository(&self) -> Arc<dyn SchemaRepository + Send + Sync>;
 }
 

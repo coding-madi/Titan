@@ -2,37 +2,58 @@
 
 use std::fs::{File, OpenOptions};
 
-use actix::{Actor, Addr, Context, Handler};
+use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
 use std::io::BufWriter;
 use tracing::info;
 
 use crate::application::actors::broadcast::RecordBatchWrapper;
-use crate::application::actors::iceberg::IcebergWriter;
+#[cfg(test)]
+pub(crate) use crate::application::actors::wal_test::test::MockWalActor;
 use crate::core::utils::transformers::{
     build_flatbufmeta_with_logmeta, serialize_record_batch_full_ipc,
 };
+use crate::platform::registry::Registry;
 use crate::platform::wal::writer::writer::write_wal_block;
 
-pub struct WalEntry {
+#[derive(Clone, Message)]
+#[rtype(result = "()")]
+pub enum WalActorAddr {
+    Real(Addr<WalActor>),
+    #[cfg(test)]
+    Mock(Addr<MockWalActor>),
+    Empty,
+}
+
+pub struct WalActor {
     pub writer: BufWriter<File>,
-    pub iceberg: Addr<IcebergWriter>,
+    pub registry_address: Addr<Registry>,
 }
 
-impl Actor for WalEntry {
+impl Actor for WalActor {
     type Context = Context<Self>;
+
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        let registry_address = self.registry_address.clone();
+        let address = _ctx.address();
+        actix_rt::spawn(async move {
+            // let pool = settings_for_spawn.connection_pool().await;
+            registry_address.do_send(WalActorAddr::Real(address));
+        });
+        info!("WAL actor started");
+    }
 }
 
-impl WalEntry {
-    pub fn new(iceberg: Addr<IcebergWriter>) -> Self {
+impl WalActor {
+    pub fn new(registry_address: Addr<Registry>) -> Self {
         info!("Creating new WAL entry actor");
         let file: File = OpenOptions::new()
             .create(true)
             .append(true)
             .open("/tmp/wal_entry.log")
             .expect("Failed to open WAL entry log file");
-        WalEntry {
+        WalActor {
             writer: BufWriter::new(file),
-            iceberg,
+            registry_address,
         }
     }
 }
@@ -40,7 +61,7 @@ impl WalEntry {
 // The actor will get messages as RecordBatchWrapper (regex applied/structured), it needs to write them to
 // WAL files as Arrow IPC streams.
 
-impl Handler<RecordBatchWrapper> for WalEntry {
+impl Handler<RecordBatchWrapper> for WalActor {
     type Result = ();
 
     fn handle(

@@ -1,13 +1,13 @@
-use crate::config::database::DatabaseSettings;
-use crate::config::flight::Flight;
+use crate::config::database_conf::DatabaseConf;
+use crate::config::flight_conf::FlightConf;
 use config::{Config, Environment, File};
 use serde_derive::Deserialize;
 
 #[derive(Deserialize)]
 pub struct Settings {
-    pub database: DatabaseSettings,
+    pub database: DatabaseConf,
     pub server: ServerType,
-    pub flight: Flight,
+    pub flight: FlightConf,
 }
 
 #[derive(Deserialize)]
