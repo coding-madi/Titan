@@ -67,14 +67,14 @@ impl RegistryBuilder {
         self
     }
 
-    #[cfg(not(test))]
+    // #[cfg(not(test))]
     pub fn broadcast_actor(mut self, broadcast_actor: BroadcastActor) -> Self {
         self.broadcast_actor_addr = Some(BroadcastActorAddr::Real(broadcast_actor.start()));
         self
     }
 
     #[cfg(test)]
-    pub fn broadcast_actor(mut self, broadcast_actor: MockBroadcastActor) -> Self {
+    pub fn broadcast_actor_mock(mut self, broadcast_actor: MockBroadcastActor) -> Self {
         self.broadcast_actor_addr = Some(BroadcastActorAddr::Mock(broadcast_actor.start()));
         self
     }
@@ -240,3 +240,40 @@ pub struct FetchParserActor;
 #[derive(Message)]
 #[rtype(result = "Result<WalActorAddr, ()>")]
 pub struct FlightWalActor;
+
+
+#[derive(Message)]
+#[rtype(result = "Result<BroadcastActorAddr, ()>")]
+pub struct FetchBroadcastActor;
+
+impl Handler<FetchBroadcastActor> for Registry {
+    type Result = Result<BroadcastActorAddr, ()>;
+
+    fn handle(&mut self, msg: FetchBroadcastActor, ctx: &mut Self::Context) -> Self::Result {
+        Ok(self.broadcast_actor_addr.clone())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<FlightRegistryActorAddr, ()>")]
+pub struct FetchFlightRegistryActor;
+
+impl Handler<FetchFlightRegistryActor> for Registry {
+    type Result = Result<FlightRegistryActorAddr, ()>;
+
+    fn handle(&mut self, msg: FetchFlightRegistryActor, ctx: &mut Self::Context) -> Self::Result {
+        Ok(self.flight_registry_actor_addr.clone())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<IcebergActorAddr, ()>")]
+pub struct FetchIcebergActor;
+
+impl Handler<FetchIcebergActor> for Registry {
+    type Result = Result<IcebergActorAddr, ()>;
+
+    fn handle(&mut self, msg: FetchIcebergActor, ctx: &mut Self::Context) -> Self::Result {
+        Ok(self.iceberg_actor_addr.clone())
+    }
+}

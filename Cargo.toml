@@ -32,6 +32,13 @@ arrow-array = "=53.2.0"
 arrow-flight = "=53.2.0"
 arrow-ipc = "=53.2.0"
 arrow-schema = "=53.2.0"
+
+# storage
+iceberg = { version = "0.4.0", features = ["storage-all", "tokio"] }
+iceberg-catalog-rest = "0.4.0"
+parquet = "53.2.0"
+uuid = "1"
+
 chrono = "=0.4.38"
 futures-util = "0.3.31"
 futures = "0.3.31"
@@ -49,6 +56,7 @@ mockall = "0.13.1"
 log = "0.4.27"
 futures-core = "0.3.31"
 http = "0.2.12"
+cargo-llvm-cov = "0.6.18"
 
 [dependencies.sqlx]
 version = "0.8.6"
@@ -57,9 +65,11 @@ features = [ "macros", "postgres", "uuid", "chrono", "migrate", "runtime-tokio",
 
 [dev-dependencies]
 reqwest = "0.12.20"
+cargo-llvm-cov = "0.6.18"
 
 [build-dependencies]
 flatbuffers = "24.3.25"  # Optional if you use it inside build.rs
+
 
 # The below configuration provides very small build files
 #[profile.release]

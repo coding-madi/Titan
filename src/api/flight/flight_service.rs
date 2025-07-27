@@ -22,6 +22,8 @@ use std::{collections::HashMap, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
+use crate::application::actors::iceberg::CreateTable;
+use crate::application::actors::iceberg::IcebergActorAddr::Real;
 
 pub struct LogFlightServer {
     pub data: Arc<Mutex<HashMap<String, Vec<RecordBatch>>>>,
@@ -159,9 +161,18 @@ impl LogFlightServer {
             let db = self.actor_registry.db_actor_addr.clone();
             let flight_registry = self.actor_registry.flight_registry_actor_addr.clone();
 
+
+            let Real(iceberg_actor) = self.actor_registry.iceberg_actor_addr.clone() else {
+                panic!("Iceberg actor not found");
+            };
             match db {
                 DbActorAddr::Real(db_actor) => {
                     db_actor.do_send(save_schema);
+                    iceberg_actor.do_send(CreateTable {
+                        table: "test_table".to_string(),
+                        schema: schema.clone(),
+                        partition_fields: vec![],
+                    });
                     info!("Schema saved in database");
                     match flight_registry {
                         FlightRegistryActorAddr::Real(_flight_registry_actor) => { /* actor usage */

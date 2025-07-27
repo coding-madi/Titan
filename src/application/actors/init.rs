@@ -73,7 +73,7 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
     let registry = RegistryBuilder::new()
         .db_actor(db_actor)
         .parser_actor(parsing_actor_vec)
-        .iceberg_actor(iceberg_actor_instance) // Pass the *instance* to the builder
+        .iceberg_actor(iceberg_actor_instance.await.unwrap()) // Pass the *instance* to the builder
         .flight_registry_actor(flight_registry_actor)
         .broadcast_actor(broadcast_actor2)
         .wal_actor(wal_actor_instance) // Pass the WalActor instance
@@ -111,6 +111,8 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
     };
     let broadcast_actor = MockBroadcastActor {
         registry_address: registry_address.clone(),
+        data: vec![],
+        regex_request: vec![]
     };
     let flight_registry_actor = MockFlightRegistry {
         registry_address: registry_address.clone(),
@@ -118,18 +120,21 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
     let iceberg_actor = MockIcebergActor {
         registry_address: registry_address.clone(),
     };
+    let wal_actor = MockWalActor::new(registry_address.clone());
+
     let parser_actor = vec![MockParsingActor {
         registry_address: registry_address.clone(),
+        data: vec![],
+        regex: vec![]
     }];
-    let wal_actor = MockWalActor::new(registry_address);
 
     let registry = RegistryBuilder::new()
-        .broadcast_actor(broadcast_actor)
+        .broadcast_actor_mock(broadcast_actor)
         .db_actor(db_actor)
         .flight_registry_actor(flight_registry_actor)
         .iceberg_actor(iceberg_actor)
         .parser_actor(parser_actor)
-        .wal_actor(MockWalActor {})
+        .wal_actor(wal_actor)
         .build();
 
     Arc::new(registry)

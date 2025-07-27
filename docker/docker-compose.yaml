@@ -16,5 +16,50 @@ services:
       - "5432:5432" # Map host port 5432 to container port 5432
     restart: unless-stopped # Always restart unless explicitly stopped
 
+  minio:
+    image: quay.io/minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    volumes:
+      - minio_data:/data # Persistent volume for MinIO data
+
+  # Lakekeeper service
+  lakekeeper:
+    image: ${LAKEKEEPER_TEST__SERVER_IMAGE:-quay.io/lakekeeper/catalog:latest-main}
+    pull_policy: always
+    environment:
+      - LAKEKEEPER__PG_ENCRYPTION_KEY=This-is-NOT-Secure!
+      - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@my_postgres_db:5432/postgres
+      - LAKEKEEPER__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@my_postgres_db:5432/postgres
+      - RUST_LOG=trace,axum=trace,sqlx=trace,lakekeeper=trace
+    command: [ "serve" ]
+    healthcheck:
+      test: [ "CMD", "/home/nonroot/lakekeeper", "healthcheck" ]
+      interval: 1s
+      timeout: 10s
+      retries: 3
+      start_period: 3s
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      iceberg_net:
+    ports:
+      - "8181:8181"
+
 volumes:
   pgdata: # Define the named volume
+  minio_data:
+  lakekeeper_data:
+networks:
+  iceberg_net:

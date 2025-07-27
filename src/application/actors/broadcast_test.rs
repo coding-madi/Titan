@@ -1,22 +1,20 @@
 #[cfg(test)]
 pub mod test {
     use crate::api::http::regex::RegexRequest;
-    use crate::application::actors::broadcast::{BroadcastActorAddr, MockBroadcastActor};
+    use crate::application::actors::broadcast::{BroadcastActor, BroadcastActorAddr};
     use crate::application::actors::db::{DbActorAddr, MockDbActor};
     use crate::application::actors::flight_registry::{
         FlightRegistryActorAddr, MockFlightRegistry,
     };
     use crate::application::actors::iceberg::{IcebergActorAddr, MockIcebergActor};
-    use crate::application::actors::parser::MockParsingActor;
+    use crate::application::actors::parser::{DumpRegex, MockParsingActor};
     use crate::application::actors::wal::{MockWalActor, WalActorAddr};
-    use crate::platform::registry::{FetchParserActor, ParserActorAddr, Registry, RegistryBuilder};
+    use crate::platform::registry::{FetchBroadcastActor, FetchParserActor, ParserActorAddr, Registry, RegistryBuilder};
     use actix::Actor;
-    use actix_web::web::to;
     use futures_util::SinkExt;
-    use std::thread::spawn;
     use std::time::Duration;
     use tokio::time::sleep;
-    use tracing_subscriber::registry;
+    use validator::ValidateLength;
 
     #[actix_web::test]
     pub async fn test_broadcast() {
@@ -33,21 +31,25 @@ pub mod test {
         let db_actor = MockDbActor {
             registry_address: registry_address.clone(),
         };
-        let broadcast_actor = MockBroadcastActor {
-            registry_address: registry_address.clone(),
-        };
+
+        let broadcast_actor = BroadcastActor::new(registry_address.clone());
         let flight_registry_actor = MockFlightRegistry {
             registry_address: registry_address.clone(),
         };
+
         let iceberg_actor = MockIcebergActor {
             registry_address: registry_address.clone(),
         };
-        let parser_actor = vec![MockParsingActor {
+
+        let mut parser_actor = vec![MockParsingActor {
             registry_address: registry_address.clone(),
+            data: vec![],
+            regex: vec![],
         }];
+
         let wal_actor = MockWalActor::new(registry_address.clone());
 
-        let registry = RegistryBuilder::new()
+        let mut registry = RegistryBuilder::new()
             .broadcast_actor(broadcast_actor)
             .db_actor(db_actor)
             .flight_registry_actor(flight_registry_actor)
@@ -60,34 +62,49 @@ pub mod test {
         let max_retries = 10;
         let delay_ms = 50; // Milliseconds to wait between retries
 
-        let mut registered_addr: Option<BroadcastActorAddr> = None;
-
         while retries < max_retries {
-            let parsed_actor = registry_address
-                .send(FetchParserActor)
+            let broadcast_actor = registry_address
+                .send(FetchBroadcastActor)
                 .await
                 .expect("TODO: panic message")
                 .expect("TODO: panic message");
-            let ParserActorAddr::Mock(actor) = parsed_actor else {
-                println!("Not mock actor");
+
+            let BroadcastActorAddr::Real(broadcast_actor2) = broadcast_actor else {
+                println!("Actor not found. Retrying...");
+                retries += 1;
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                 continue;
             };
 
-            for i in actor {
-                i.send(RegexRequest {
-                    name: "".to_string(),
-                    tenant: "".to_string(),
-                    flight_id: "".to_string(),
-                    log_group: "".to_string(),
-                    pattern: vec![],
-                })
-                .await;
+            let x = broadcast_actor2.send(RegexRequest {
+                name: "".to_string(),
+                tenant: "".to_string(),
+                flight_id: "".to_string(),
+                log_group: "".to_string(),
+                pattern: vec![],
+            }).await.unwrap();
 
-                let x = registry.clone();
-            }
-            retries += 1;
-            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+            sleep(Duration::from_millis(1000)).await;
+            assert!(x.is_ok());
+            break;
         }
-        assert!(registered_addr.is_some(), "BroadcastActor address was not registered in Registry after retries.");
+
+        let x = registry_address.send(FetchParserActor).await.unwrap();
+        match x {
+            Ok(mut y) => {
+                match y {
+                    ParserActorAddr::Mock(z) => {
+                        let x = z[0].send(DumpRegex {}).await.unwrap();
+                        assert_ne!(Some(0), x.length());
+                    }
+                    _ => {}
+                }
+
+            },
+            _ => {
+                println!("Actor not found. Retrying...");
+            }
+        }
+
     }
 }

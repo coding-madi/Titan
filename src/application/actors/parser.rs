@@ -81,6 +81,7 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
     fn handle(&mut self, record: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
         let service_id = &record.metadata.service_id;
         let parser = self.clone();
+        let registry = self.registry_address.clone();
         let fut = async move {
             let registry_address = parser.registry_address.clone();
             let Ok(result) = registry_address.send(FetchWalActor).await else {
@@ -91,6 +92,14 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
                 error!("Failed to fetch WalActorAddr from Registry");
                 return;
             };
+
+            // Handle mock cases
+            let Real(actor) = registry.send(FetchIcebergActor).await.unwrap().unwrap() else {
+                return;
+            };
+
+            actor.send(record.clone()).await.unwrap();
+
             match address {
                 WalActorAddr::Real(wal_actors) => {
                     wal_actors.do_send(record);
@@ -152,9 +161,10 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
 
 // Apply a single RegexPattern to the "event_type" column
 use crate::application::actors::wal::WalActorAddr;
-use crate::platform::registry::{FetchWalActor, Registry};
+use crate::platform::registry::{FetchIcebergActor, FetchWalActor, Registry};
 use regex::Regex;
 use tracing::trace;
+use crate::application::actors::iceberg::IcebergActorAddr::Real;
 
 fn fast_regex_match(text_array: &StringArray, pattern: &str) -> Result<BooleanArray, String> {
     let regex = Regex::new(pattern).map_err(|e| format!("Invalid regex: {e}"))?;
@@ -182,14 +192,17 @@ fn get_flight_and_schemas(_team_id: &String) -> HashMap<String, Schema> {
 }
 
 #[cfg(test)]
+#[derive(Clone)]
 pub struct MockParsingActor {
     pub registry_address: Addr<Registry>,
+    pub data: Vec<RecordBatchWrapper>,
+    pub regex: Vec<RegexRequest>,
 }
 
 #[cfg(test)]
 impl MockParsingActor {
     pub fn new(registry_address: Addr<Registry>) -> Self {
-        Self { registry_address }
+        Self { registry_address, data: vec![], regex: vec![] }
     }
 }
 
@@ -216,7 +229,24 @@ impl Handler<RecordBatchWrapper> for MockParsingActor {
 #[cfg(test)]
 impl Handler<RegexRequest> for MockParsingActor {
     type Result = Result<(), ValidationErrors>;
-    fn handle(&mut self, _: RegexRequest, _: &mut Self::Context) -> Self::Result {
-        todo!()
+    fn handle(&mut self, regex: RegexRequest, _: &mut Self::Context) -> Self::Result {
+        println!("Actor for parsing received RegexRule: {:?}", regex);
+        self.regex.push(regex);
+        Ok(())
+    }
+}
+
+
+#[cfg(test)]
+#[derive(Message, Clone)]
+#[rtype(result = "Vec<RegexRequest>")]
+pub struct DumpRegex;
+
+#[cfg(test)]
+impl Handler<DumpRegex> for MockParsingActor {
+    type Result = Vec<RegexRequest>;
+
+    fn handle(&mut self, msg: DumpRegex, ctx: &mut Self::Context) -> Self::Result {
+        self.regex.clone()
     }
 }

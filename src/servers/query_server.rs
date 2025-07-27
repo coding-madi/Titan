@@ -113,7 +113,7 @@ impl PorosServer for QueryServer {
 }
 
 fn create_listener(_config: &Settings) -> Result<TcpListener, ServerError> {
-    let listener = TcpListener::bind("127.0.0.1:8888").expect("Port busy. Please try again");
+    let listener = TcpListener::bind("127.0.0.1:8890").expect("Port busy. Please try again");
     Ok(listener)
 }
 

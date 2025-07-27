@@ -79,7 +79,9 @@ impl Handler<RegexRequest> for BroadcastActor {
                             }
                         }
                         #[cfg(test)]
-                        ParserActorAddr::Mock(add) => {}
+                        ParserActorAddr::Mock(add) => {
+                            add[0].do_send(regex_request.clone());
+                        }
                         _ => {}
                     },
                     _ => {}
@@ -164,11 +166,20 @@ impl Display for Metadata {
 #[cfg(test)]
 pub struct MockBroadcastActor {
     pub registry_address: Addr<Registry>,
+    pub data: Vec<RecordBatchWrapper>,
+    pub regex_request: Vec<RegexRequest>,
 }
 
 #[cfg(test)]
 impl Actor for MockBroadcastActor {
     type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        let registry_address = self.registry_address.clone();
+        let address = ctx.address();
+        registry_address.do_send(BroadcastActorAddr::Mock(address.clone()));
+        trace!("MockBroadcastActor started");
+    }
 }
 
 #[cfg(test)]
@@ -176,7 +187,8 @@ impl Handler<RegexRequest> for MockBroadcastActor {
     type Result = Result<(), ValidationErrors>;
 
     fn handle(&mut self, _msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
-        todo!()
+        self.regex_request.push(_msg.clone());
+        Ok(())
     }
 }
 
@@ -185,6 +197,6 @@ impl Handler<RecordBatchWrapper> for MockBroadcastActor {
     type Result = ();
 
     fn handle(&mut self, _msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
-        todo!()
+        todo!();
     }
 }
