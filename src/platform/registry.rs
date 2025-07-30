@@ -17,12 +17,12 @@ use crate::application::actors::iceberg::{IcebergActor, IcebergActorAddr};
 #[cfg(test)]
 use crate::application::actors::parser::MockParsingActor;
 pub(crate) use crate::application::actors::parser::ParserActorAddr;
-use crate::application::actors::parser::ParsingActor;
 #[cfg(test)]
 use crate::application::actors::wal::MockWalActor;
 use crate::application::actors::wal::{WalActor, WalActorAddr};
 use actix::{Actor, Addr, Handler, Message};
 use tracing::log::trace;
+use crate::application::actors::parser::ParsingActor;
 
 #[derive(Clone)]
 pub struct Registry {
@@ -240,7 +240,6 @@ pub struct FetchParserActor;
 #[derive(Message)]
 #[rtype(result = "Result<WalActorAddr, ()>")]
 pub struct FlightWalActor;
-
 
 #[derive(Message)]
 #[rtype(result = "Result<BroadcastActorAddr, ()>")]

@@ -27,7 +27,6 @@ use crate::application::actors::wal::WalActor;
 use crate::application::actors::broadcast::BroadcastActorAddr;
 #[cfg(not(test))]
 use crate::application::actors::db::DbActorAddr;
-use crate::application::actors::db::DbActorAddr::Empty;
 #[cfg(not(test))]
 use crate::application::actors::flight_registry::FlightRegistryActorAddr;
 #[cfg(not(test))]
@@ -112,7 +111,7 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
     let broadcast_actor = MockBroadcastActor {
         registry_address: registry_address.clone(),
         data: vec![],
-        regex_request: vec![]
+        regex_request: vec![],
     };
     let flight_registry_actor = MockFlightRegistry {
         registry_address: registry_address.clone(),
@@ -125,7 +124,7 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
     let parser_actor = vec![MockParsingActor {
         registry_address: registry_address.clone(),
         data: vec![],
-        regex: vec![]
+        regex: vec![],
     }];
 
     let registry = RegistryBuilder::new()

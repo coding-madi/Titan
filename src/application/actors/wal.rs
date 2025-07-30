@@ -97,7 +97,11 @@ impl Actor for WalActor {
 impl Handler<RecordBatchWrapper> for WalActor {
     type Result = ();
 
-    fn handle(&mut self, record_batch_wrapper: RecordBatchWrapper, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        record_batch_wrapper: RecordBatchWrapper,
+        ctx: &mut Self::Context,
+    ) -> Self::Result {
         let metadata_bytes = build_flatbufmeta_with_logmeta(&record_batch_wrapper.metadata);
         let data_bytes = serialize_record_batch_full_ipc(&record_batch_wrapper);
 
@@ -115,7 +119,11 @@ impl Handler<RecordBatchWrapper> for WalActor {
             let myself = ctx.address();
 
             spawn(async move {
-                match registry_address.send(FetchIcebergActor).await.unwrap_or(Err(())) {
+                match registry_address
+                    .send(FetchIcebergActor)
+                    .await
+                    .unwrap_or(Err(()))
+                {
                     Ok(IcebergActorAddr::Real(iceberg)) => {
                         let _ = iceberg.send(FlushInstruction {}).await;
                         info!("Sent flush instruction to Iceberg actor");

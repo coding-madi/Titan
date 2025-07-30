@@ -9,7 +9,9 @@ pub mod test {
     use crate::application::actors::iceberg::{IcebergActorAddr, MockIcebergActor};
     use crate::application::actors::parser::{DumpRegex, MockParsingActor};
     use crate::application::actors::wal::{MockWalActor, WalActorAddr};
-    use crate::platform::registry::{FetchBroadcastActor, FetchParserActor, ParserActorAddr, Registry, RegistryBuilder};
+    use crate::platform::registry::{
+        FetchBroadcastActor, FetchParserActor, ParserActorAddr, Registry, RegistryBuilder,
+    };
     use actix::Actor;
     use futures_util::SinkExt;
     use std::time::Duration;
@@ -41,7 +43,7 @@ pub mod test {
             registry_address: registry_address.clone(),
         };
 
-        let mut parser_actor = vec![MockParsingActor {
+        let parser_actor = vec![MockParsingActor {
             registry_address: registry_address.clone(),
             data: vec![],
             regex: vec![],
@@ -49,7 +51,7 @@ pub mod test {
 
         let wal_actor = MockWalActor::new(registry_address.clone());
 
-        let mut registry = RegistryBuilder::new()
+        let registry = RegistryBuilder::new()
             .broadcast_actor(broadcast_actor)
             .db_actor(db_actor)
             .flight_registry_actor(flight_registry_actor)
@@ -76,13 +78,16 @@ pub mod test {
                 continue;
             };
 
-            let x = broadcast_actor2.send(RegexRequest {
-                name: "".to_string(),
-                tenant: "".to_string(),
-                flight_id: "".to_string(),
-                log_group: "".to_string(),
-                pattern: vec![],
-            }).await.unwrap();
+            let x = broadcast_actor2
+                .send(RegexRequest {
+                    name: "".to_string(),
+                    tenant: "".to_string(),
+                    flight_id: "".to_string(),
+                    log_group: "".to_string(),
+                    pattern: vec![],
+                })
+                .await
+                .unwrap();
 
             sleep(Duration::from_millis(1000)).await;
             assert!(x.is_ok());
@@ -91,20 +96,16 @@ pub mod test {
 
         let x = registry_address.send(FetchParserActor).await.unwrap();
         match x {
-            Ok(mut y) => {
-                match y {
-                    ParserActorAddr::Mock(z) => {
-                        let x = z[0].send(DumpRegex {}).await.unwrap();
-                        assert_ne!(Some(0), x.length());
-                    }
-                    _ => {}
+            Ok(y) => match y {
+                ParserActorAddr::Mock(z) => {
+                    let x = z[0].send(DumpRegex {}).await.unwrap();
+                    assert_ne!(Some(0), x.length());
                 }
-
+                _ => {}
             },
             _ => {
                 println!("Actor not found. Retrying...");
             }
         }
-
     }
 }

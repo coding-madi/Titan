@@ -1,8 +1,9 @@
 use crate::application::actors::broadcast::{BroadcastActorAddr, Metadata, RecordBatchWrapper};
 use crate::application::actors::db::{DbActorAddr, SaveSchema};
 use crate::application::actors::flight_registry::{Fields, FlightRegistryActorAddr};
+use crate::application::actors::iceberg::CreateTable;
+use crate::application::actors::iceberg::IcebergActorAddr::Real;
 use crate::platform::registry::Registry;
-use actix::WrapStream;
 use actix::dev::Stream;
 use actix_web::web::Bytes;
 use arrow::datatypes::Schema;
@@ -22,8 +23,6 @@ use std::{collections::HashMap, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
-use crate::application::actors::iceberg::CreateTable;
-use crate::application::actors::iceberg::IcebergActorAddr::Real;
 
 pub struct LogFlightServer {
     pub data: Arc<Mutex<HashMap<String, Vec<RecordBatch>>>>,
@@ -59,10 +58,6 @@ impl LogFlightServer {
             .map_err(|e| Status::internal(format!("Failed to convert Schema: {e}")))?;
 
         let descriptor = FlightDescriptor::new_path(vec![table_name.to_string()]);
-
-        let ticket = Ticket {
-            ticket: Bytes::from(table_name.to_string()),
-        };
 
         let total_records: i64 = batches.iter().map(|batch| batch.num_rows() as i64).sum();
 
@@ -112,7 +107,7 @@ impl LogFlightServer {
     }
 
     /// Handles the initial FlightData message containing descriptor and schema.
-    async fn handle_initial_put_message(
+    async fn handle_schema_message(
         &self,
         flight_data: &FlightData,
         name: &mut Option<String>,
@@ -160,7 +155,6 @@ impl LogFlightServer {
             // Persist the schema in database
             let db = self.actor_registry.db_actor_addr.clone();
             let flight_registry = self.actor_registry.flight_registry_actor_addr.clone();
-
 
             let Real(iceberg_actor) = self.actor_registry.iceberg_actor_addr.clone() else {
                 panic!("Iceberg actor not found");
@@ -237,7 +231,7 @@ impl LogFlightServer {
 
     pub async fn do_put_from_stream<S>(&self, mut stream: S) -> Result<Vec<PutResult>, Status>
     where
-        S: futures_core::Stream<Item = Result<FlightData, Status>> + Unpin + Send + 'static,
+        S: Stream<Item = Result<FlightData, Status>> + Unpin + Send + 'static,
     {
         // let mut flight_data_stream = request.into_inner();
         let mut name: Option<String> = None;
@@ -248,7 +242,7 @@ impl LogFlightServer {
 
             // Handle initial message containing descriptor and/or schema
             if name.is_none() || schema_opt.is_none() {
-                self.handle_initial_put_message(&flight_data, &mut name, &mut schema_opt)
+                self.handle_schema_message(&flight_data, &mut name, &mut schema_opt)
                     .await?;
                 // If this was a schema message (no body), continue to next message
                 if schema_opt.is_some() && flight_data.data_body.is_empty() {

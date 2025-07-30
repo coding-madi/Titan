@@ -34,6 +34,8 @@ arrow-ipc = "=55.2.0"
 arrow-schema = "=55.2.0"
 
 # storage
+# bug: There are some huge bugs in iceberg-rust 0.4.0.
+# It does not use path-style bucket URI.
 iceberg = { version = "0.5.1", features = ["storage-all", "tokio"] }
 iceberg-catalog-rest = "0.5.1"
 parquet = "55.2.0"

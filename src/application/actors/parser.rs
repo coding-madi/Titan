@@ -4,7 +4,6 @@ use actix::{
 use arrow::datatypes::Schema;
 use arrow_array::{Array, BooleanArray, StringArray};
 use std::collections::HashMap;
-use std::thread::spawn;
 use validator::ValidationErrors;
 
 pub(crate) use crate::api::http::regex::{Pattern, RegexRequest};
@@ -113,58 +112,14 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
         };
 
         fut.into_actor(self).spawn(_ctx);
-
-        //     let Some(patterns) = self.patterns.get(service_id).clone() else {
-        //         // No patterns found, forward as-is
-        //         match &registry.wal_actor_addr {
-        //             WalActorAddr::Real(wal_actors) => {
-        //                 wal_actors.do_send(record);
-        //             }
-        //             #[cfg(test)]
-        //             WalActorAddr::Mock(wal_actors) => {
-        //                 wal_actors.do_send(record);
-        //             }
-        //             _ => {}
-        //         }
-        //
-        //         return;
-        //     };
-        //
-        //     for pattern in patterns {
-        //         match pattern {
-        //             Pattern::RegexPattern(regex_pattern) => {
-        //                 let column_name = "event_type";
-        //                 let column_index = record
-        //                     .data
-        //                     .schema()
-        //                     .index_of(column_name)
-        //                     .map_err(|e| format!("Column not found '{}': {:?}", column_name, e))
-        //                     .unwrap();
-        //
-        //                 let text_array = record
-        //                     .data
-        //                     .column(column_index)
-        //                     .as_any()
-        //                     .downcast_ref::<StringArray>()
-        //                     .ok_or_else(|| format!("Column '{}' is not a StringArray", column_name))
-        //                     .unwrap();
-        //                 let matches = fast_regex_match(text_array, ".*").unwrap();
-        //                 info!("Regex application succeeded");
-        //             }
-        //             Pattern::GrokPattern(_grok) => {
-        //                 // TODO: Implement Grok parsing if needed
-        //             }
-        //         }
-        //     }
     }
 }
 
-// Apply a single RegexPattern to the "event_type" column
+use crate::application::actors::iceberg::IcebergActorAddr::Real;
 use crate::application::actors::wal::WalActorAddr;
 use crate::platform::registry::{FetchIcebergActor, FetchWalActor, Registry};
 use regex::Regex;
 use tracing::trace;
-use crate::application::actors::iceberg::IcebergActorAddr::Real;
 
 fn fast_regex_match(text_array: &StringArray, pattern: &str) -> Result<BooleanArray, String> {
     let regex = Regex::new(pattern).map_err(|e| format!("Invalid regex: {e}"))?;
@@ -202,7 +157,11 @@ pub struct MockParsingActor {
 #[cfg(test)]
 impl MockParsingActor {
     pub fn new(registry_address: Addr<Registry>) -> Self {
-        Self { registry_address, data: vec![], regex: vec![] }
+        Self {
+            registry_address,
+            data: vec![],
+            regex: vec![],
+        }
     }
 }
 
@@ -235,7 +194,6 @@ impl Handler<RegexRequest> for MockParsingActor {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 #[derive(Message, Clone)]
