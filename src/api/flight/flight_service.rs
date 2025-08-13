@@ -1,8 +1,7 @@
 use crate::application::actors::broadcast::{BroadcastActorAddr, Metadata, RecordBatchWrapper};
 use crate::application::actors::db::{DbActorAddr, SaveSchema};
 use crate::application::actors::flight_registry::{Fields, FlightRegistryActorAddr};
-use crate::application::actors::iceberg::CreateTable;
-use crate::application::actors::iceberg::IcebergActorAddr::Real;
+use crate::application::actors::iceberg::{CreateTable, IcebergActorAddr};
 use crate::platform::registry::Registry;
 use actix::dev::Stream;
 use actix_web::web::Bytes;
@@ -156,29 +155,55 @@ impl LogFlightServer {
             let db = self.actor_registry.db_actor_addr.clone();
             let flight_registry = self.actor_registry.flight_registry_actor_addr.clone();
 
-            let Real(iceberg_actor) = self.actor_registry.iceberg_actor_addr.clone() else {
-                panic!("Iceberg actor not found");
-            };
-            match db {
-                DbActorAddr::Real(db_actor) => {
-                    db_actor.do_send(save_schema);
-                    iceberg_actor.do_send(CreateTable {
-                        table: "test_table".to_string(),
-                        schema: schema.clone(),
-                        partition_fields: vec![],
-                    });
-                    info!("Schema saved in database");
-                    match flight_registry {
-                        FlightRegistryActorAddr::Real(_flight_registry_actor) => { /* actor usage */
+            match &self.actor_registry.iceberg_actor_addr.clone() {
+                IcebergActorAddr::Real(iceberg_actor) => {
+                    match db {
+                        DbActorAddr::Real(db_actor) => {
+                            db_actor.do_send(save_schema);
+                            iceberg_actor.do_send(CreateTable {
+                                table: name.clone().unwrap_or_default(),
+                                schema: schema.clone(),
+                                _partition_fields: vec![],
+                            });
+                            info!("Schema saved in database");
+                            match flight_registry {
+                                FlightRegistryActorAddr::Real(_flight_registry_actor) => { /* actor usage */
+                                }
+                                #[cfg(test)]
+                                FlightRegistryActorAddr::Mock(_) => {}
+                                _ => {}
+                            }
                         }
                         #[cfg(test)]
-                        FlightRegistryActorAddr::Mock(_) => {}
+                        DbActorAddr::Mock(_) => {}
                         _ => {}
                     }
                 }
                 #[cfg(test)]
-                DbActorAddr::Mock(_) => {}
-                _ => {}
+                IcebergActorAddr::Mock(iceberg_actor) => {
+                    match db {
+                        DbActorAddr::Real(db_actor) => {
+                            db_actor.do_send(save_schema);
+                            iceberg_actor.do_send(CreateTable {
+                                table: "test_table".to_string(),
+                                schema: schema.clone(),
+                                _partition_fields: vec![],
+                            });
+                            info!("Schema saved in database");
+                            match flight_registry {
+                                FlightRegistryActorAddr::Real(_flight_registry_actor) => { /* actor usage */
+                                }
+                                #[cfg(test)]
+                                FlightRegistryActorAddr::Mock(_) => {}
+                                _ => {}
+                            }
+                        }
+                        #[cfg(test)]
+                        DbActorAddr::Mock(_) => {}
+                        _ => {}
+                    }
+                }
+                IcebergActorAddr::Empty => {}
             }
         }
         Ok(())
@@ -213,8 +238,8 @@ impl LogFlightServer {
         };
 
         match &self.actor_registry.broadcast_actor_addr {
-            BroadcastActorAddr::Real(addr) => {
-                addr.do_send(batch_wrapped);
+            BroadcastActorAddr::Real(broadcast_actor) => {
+                broadcast_actor.do_send(batch_wrapped);
             }
             #[cfg(test)]
             BroadcastActorAddr::Mock(_) => {}
@@ -377,6 +402,7 @@ impl FlightService for LogFlightServer {
         let stream = stream::iter(results.into_iter().map(Ok)); // Wrap each PutResult as Ok(PutResult)
         Ok(Response::new(Box::pin(stream)))
     }
+
     type DoExchangeStream = Pin<Box<dyn Stream<Item = Result<FlightData, Status>> + Send>>;
     async fn do_exchange(
         &self,

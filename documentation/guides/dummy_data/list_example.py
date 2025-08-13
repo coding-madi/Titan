@@ -108,19 +108,19 @@ class SimpleFlightClient:
         )
         fields = [
             pa.field("event_id", pa.int64(), nullable=True, metadata={"PARQUET:field_id": "1"}),
-            pa.field("event_type", pa.string(), nullable=True, metadata={"PARQUET:field_id": "2"})
+            pa.field("event_type", pa.string(), nullable=True, metadata={"PARQUET:field_id": "2"}),
             # tags list with unique field ids
-#             pa.field(
-#                 "tags",
-#                 pa.list_(
-#                     pa.field(
-#                         "element",  # Must match what Iceberg expects
-#                         pa.string(),
-#                         metadata={"PARQUET:field_id": "4"}
-#                     )
-#                 ),
-#                 metadata={"PARQUET:field_id": "3"}  # Unique from everything else
-#             )
+            pa.field(
+                "tags",
+                pa.list_(
+                    pa.field(
+                        "element",  # Must match what Iceberg expects
+                        pa.string(),
+                        metadata={"PARQUET:field_id": "4"}
+                    )
+                ),
+                metadata={"PARQUET:field_id": "3"}  # Unique from everything else
+            )
         ]
         schema = pa.schema(fields)
         tags_array = pa.array([["tag1", f"tag{(i % 5) + 1}"] for i in range(batch_index * num_rows, (batch_index + 1) * num_rows)],
@@ -129,7 +129,7 @@ class SimpleFlightClient:
             [
                 pa.array(range(batch_index * num_rows, (batch_index + 1) * num_rows), type=pa.int64()),
                 pa.array(["event"] * num_rows, type=pa.string()),
-#                 tags_array
+                tags_array
             ],
             schema=schema
         )
@@ -223,9 +223,9 @@ async def main():
     SERVER_PORT = 50051
     client = SimpleFlightClient(SERVER_HOST, SERVER_PORT)
 
-    batch_descriptor = flight.FlightDescriptor.for_path("/benchmark/single_stream_batches")
+    batch_descriptor = flight.FlightDescriptor.for_path("log_list")
     rows_per_batch = 101072
-    num_batches = 100
+    num_batches = 50
 
     logging.info(f"\n--- Starting async benchmark for sending {num_batches} batches ---")
 

@@ -1,361 +1,562 @@
-// This actor reads Arrow IPC Wal files
-// It then constructs a new Arrow buffer, that is partitioned based on the configuration
+    // This actor reads Arrow IPC Wal files
+    // It then constructs a new Arrow buffer, that is partitioned based on the configuration
 
-// TODO: Vectorized read of the Wal file. Also, read some fields from metadata for grouping.
-// This should be done on a mmap file and the metadata should be stored in Flatbuf.
+    // TODO: Vectorized read of the Wal file. Also, read some fields from metadata for grouping.
+    // This should be done on a mmap file and the metadata should be stored in Flatbuf.
 
-use crate::application::actors::broadcast::RecordBatchWrapper;
-use crate::core::utils::iceberg::convert_arrow_to_iceberg_schema;
-use crate::platform::registry::Registry;
-#[cfg(test)]
-use actix::Context;
-use actix::{Actor, Addr, AsyncContext, Handler, Message};
-use arrow::compute::concat_batches;
-use arrow_array::RecordBatch;
-use iceberg::spec::Schema;
-use iceberg::transaction::Transaction;
-use iceberg::writer::base_writer::data_file_writer::DataFileWriterBuilder;
-use iceberg::writer::file_writer::ParquetWriterBuilder;
-use iceberg::writer::file_writer::location_generator::{
-    DefaultFileNameGenerator, DefaultLocationGenerator,
-};
-use iceberg::writer::{IcebergWriter, IcebergWriterBuilder};
-use iceberg::{Catalog, NamespaceIdent, TableCreation, TableIdent};
-use iceberg_catalog_rest::{RestCatalog, RestCatalogConfig};
-use parquet::file::properties::WriterProperties;
-use std::collections::HashMap;
-use std::sync::Arc;
-use log::error;
-use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
-use tracing::{info, warn};
-use uuid::Uuid;
-
-#[derive(Clone, Message)]
-#[rtype(result = "()")]
-pub enum IcebergActorAddr {
-    Real(Addr<IcebergActor>),
+    use crate::application::actors::broadcast::RecordBatchWrapper;
+    use crate::config::yaml_reader::{GCSProperties, ObjectStorage, S3Properties, Storage};
+    use crate::core::utils::iceberg::convert_arrow_to_iceberg_schema;
+    use crate::platform::registry::Registry;
     #[cfg(test)]
-    Mock(Addr<MockIcebergActor>),
-    Empty,
-}
+    use actix::Context;
+    use actix::{Actor, Addr, AsyncContext, Handler, Message, ResponseFuture};
+    use arrow::compute::concat_batches;
+    use arrow_array::RecordBatch;
+    use iceberg::spec::DataFile;
+    use iceberg::table::Table;
+    use iceberg::transaction::Transaction;
+    use iceberg::writer::base_writer::data_file_writer::DataFileWriterBuilder;
+    use iceberg::writer::file_writer::ParquetWriterBuilder;
+    use iceberg::writer::file_writer::location_generator::{
+        DefaultFileNameGenerator, DefaultLocationGenerator,
+    };
+    use iceberg::writer::{IcebergWriter, IcebergWriterBuilder};
+    use iceberg::{Catalog, NamespaceIdent, TableCreation, TableIdent};
+    use iceberg_catalog_rest::{RestCatalog, RestCatalogConfig};
+    use log::error;
+    use parquet::file::properties::WriterProperties;
+    use std::collections::HashMap;
+    use std::fmt::Error;
+    use std::ops::Deref;
+    use std::sync::Arc;
+    use std::thread::spawn;
+    use tokio::sync::Mutex;
+    use tokio::task::JoinHandle;
+    use tracing::info;
+    use uuid::Uuid;
 
-#[derive(Clone)]
-pub struct IcebergActor {
-    catalog: Arc<Mutex<RestCatalog>>,
-    registry_address: Addr<Registry>,
-    buffer: Arc<Mutex<Vec<RecordBatchWrapper>>>,
-}
-
-pub async fn fetch_catalog() -> RestCatalog {
-    let mut props = HashMap::new();
-    props.insert("aws.region".to_string(), "us-east-1".to_string());
-    props.insert("aws.endpoint".to_string(), "http://minio:9000".to_string());
-    props.insert(
-        "aws.access_key_id".to_string(),
-        "minio-root-user".to_string(),
-    );
-    props.insert(
-        "aws.secret_access_key".to_string(),
-        "minio-root-password".to_string(),
-    );
-    props.insert("path-style-access".to_string(), "false".to_string());
-
-    let config = RestCatalogConfig::builder()
-        .uri("http://127.0.0.1:8181/catalog".to_string())
-        .warehouse("log".to_string())
-        .props(props)
-        .build();
-    let catalog = RestCatalog::new(config);
-    catalog
-}
-
-impl IcebergActor {
-    pub fn new(&mut self, registry_address: Addr<Registry>) -> JoinHandle<IcebergActor> {
-        actix_rt::spawn(async move {
-            let catalog = Arc::new(Mutex::new(fetch_catalog().await));
-            IcebergActor {
-                catalog,
-                registry_address,
-                buffer: Arc::new(Mutex::new(vec![])),
-            }
-        })
+    #[derive(Clone, Message)]
+    #[rtype(result = "()")]
+    pub enum IcebergActorAddr {
+        Real(Addr<IcebergActor>),
+        #[cfg(test)]
+        Mock(Addr<MockIcebergActor>),
+        Empty,
     }
 
-    pub fn default(registry_address: Addr<Registry>) -> JoinHandle<IcebergActor> {
-        actix_rt::spawn(async move {
-            let catalog = Arc::new(Mutex::new(fetch_catalog().await));
-            IcebergActor {
-                catalog,
-                registry_address,
-                buffer: Arc::new(Mutex::new(vec![])),
-            }
-        })
+    type BufferMap = Mutex<HashMap<String, Arc<Mutex<Vec<RecordBatchWrapper>>>>>;
+
+    #[derive(Clone)]
+    pub struct IcebergActor {
+        catalog: Arc<Mutex<RestCatalog>>,
+        namespace: String,
+        registry_address: Addr<Registry>,
+        buffer: Arc<BufferMap>,
     }
 
-    pub fn write(&self, _data: &[u8]) {
-        // Here we would write the data to the WAL file
-        // For now, we just print the data
+    fn s3_props(properties: S3Properties) -> HashMap<String, String> {
+        HashMap::from([
+            ("aws.region", properties.aws_region),
+            ("aws.endpoint", properties.aws_endpoint),
+            ("aws.access_key_id", properties.aws_access_key_id),
+            ("aws.secret_access_key", properties.aws_secret_access_key),
+            (
+                "path-style-access",
+                properties.path_style_access.to_string(),
+            ),
+        ])
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
     }
-}
 
-impl Actor for IcebergActor {
-    type Context = actix::Context<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        let address = ctx.address();
-        let registry_address = self.registry_address.clone();
-        actix_rt::spawn(async move {
-            registry_address.do_send(IcebergActorAddr::Real(address));
-        });
-        println!("Started IcebergActor");
+    fn gcs_props(_properties: GCSProperties) -> HashMap<String, String> {
+        HashMap::new()
     }
-}
 
-impl Handler<RecordBatchWrapper> for IcebergActor {
-    type Result = ();
-    fn handle(&mut self, msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
-        let buffer = self.buffer.clone();
-        actix_rt::spawn(async move {
-            buffer.lock().await.push(msg);
-        });
+    fn catalog_config(
+        properties: HashMap<String, String>,
+        warehouse_name: String,
+    ) -> RestCatalogConfig {
+        let endpoint = properties
+            .get("aws.endpoint")
+            .expect("Missing endpoint property")
+            .clone();
+        RestCatalogConfig::builder()
+            .uri(endpoint)
+            .warehouse(warehouse_name)
+            .props(properties)
+            .build()
     }
-}
 
-pub struct FlushInstruction;
+    pub async fn fetch_catalog(storage: Storage) -> RestCatalog {
+        let object_storage = storage.object_storage;
+        let properties: HashMap<String, String> = match object_storage {
+            ObjectStorage::S3(s3_properties) => s3_props(s3_properties),
+            ObjectStorage::GCS(gcs_properties) => gcs_props(gcs_properties),
+        };
 
-impl Message for FlushInstruction {
-    type Result = Result<(), String>;
-}
+        let catalog = catalog_config(properties, storage.warehouse);
+        RestCatalog::new(catalog)
+    }
 
-// Trigger a flush to the iceberg table
-impl Handler<FlushInstruction> for IcebergActor {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _msg: FlushInstruction, _ctx: &mut Self::Context) -> Self::Result {
-        println!("Received FlushInstruction. Attempting to flush buffered data.");
-        let catalog_arc = self.catalog.clone();
-        let buffer_arc = self.buffer.clone();
-
-        actix_rt::spawn(async move {
-            let mut buffer_guard = buffer_arc.lock().await;
-            if buffer_guard.is_empty() {
-                println!("Buffer is empty, nothing to flush.");
-                return;
-            }
-
-            // Take all RecordBatches from the buffer
-            let batches_to_flush: Vec<Arc<RecordBatch>> = buffer_guard
-                .drain(..) // Drains the buffer, leaving it empty
-                .map(|wrapper| wrapper.data)
-                .collect();
-
-            // If the buffer is empty after draining, handle it
-            if batches_to_flush.is_empty() {
-                println!("Buffer was emptied by drain, nothing to concatenate.");
-                return;
-            }
-
-            // Assuming all batches have the same schema for concatenation
-            let first_schema = batches_to_flush[0].schema();
-            let raw_batches_refs: Vec<&RecordBatch> = batches_to_flush
-                .iter()
-                .map(|arc_batch| &**arc_batch)
-                .collect();
-
-            let merged_batch = match concat_batches(&first_schema, raw_batches_refs) {
-                Ok(batch) => Arc::new(batch),
-                Err(e) => {
-                    eprintln!("Failed to concatenate RecordBatches: {:?}", e);
-                    return;
+    impl IcebergActor {
+        pub fn new(
+            registry_address: Addr<Registry>,
+            object_storage_properties: Storage,
+            namespace: String,
+        ) -> JoinHandle<IcebergActor> {
+            actix_rt::spawn(async move {
+                let catalog = Arc::new(Mutex::new(fetch_catalog(object_storage_properties).await));
+                IcebergActor {
+                    catalog,
+                    namespace,
+                    registry_address,
+                    buffer: Arc::new(BufferMap::new(HashMap::new())),
                 }
+            })
+        }
+
+        async fn is_buffer_empty(&self) -> bool {
+            self.buffer.lock().await.is_empty()
+        }
+
+        // async fn drain_buffer(&self) -> Vec<RecordBatchWrapper> {
+        //     let mut drained = vec![];
+        //     for buffer_value in self.buffer.lock().await.values() {
+        //         let mut buf = buffer_value.lock().await;
+        //         let drained_batches = buf
+        //             .drain(..)
+        //             .map(|wrapper| wrapper) // Extract Arc<RecordBatch>
+        //             .collect::<Vec<_>>();
+        //         drained.extend(drained_batches);
+        //     }
+        //     drained
+        // }
+
+        async fn drain_buffer(&self) -> Vec<RecordBatchWrapper> {
+            // Step 1: Take the map out (swap with an empty one) so we release the outer lock quickly
+            let buffers: Vec<_> = {
+                let mut buffer_guard = self.buffer.lock().await;
+                buffer_guard.values().cloned().collect()
             };
 
-            println!("Merged RecordBatch Schema (Arrow): {:?}", merged_batch.schema());
-            // For more detailed inspection:
-            for (i, field) in merged_batch.schema().fields().iter().enumerate() {
-                println!("Arrow Field: Index={}, Name='{}', DataType={:?}", i, field.name(), field.data_type());
+            // Step 2: Process each buffer concurrently
+            let drained_batches: Vec<Vec<RecordBatchWrapper>> = futures::future::join_all(
+                buffers.into_iter().map(|buf_arc| async move {
+                    let mut buf = buf_arc.lock().await;
+                    buf.drain(..).collect()
+                })
+            ).await;
+
+            // Step 3: Flatten into one vector
+            drained_batches.into_iter().flatten().collect()
+        }
+
+
+        pub async fn concat_batches_grouped(
+            &self,
+            batches: &Vec<RecordBatchWrapper>,
+        ) -> Result<HashMap<String, Arc<RecordBatch>>, String> {
+            if batches.is_empty() {
+                return Err("No batches to concat".into());
             }
 
-            // Assuming a fixed table name for flushing, or you could derive it from metadata
-            let table_name = "test_table".to_string(); // You might want to get this dynamically
-            let table_ident =
-                TableIdent::from_strs(vec!["log".to_string(), table_name.clone()]).unwrap();
+            // Step 1: Group by flight metadata
+            let mut groups: HashMap<String, Vec<&RecordBatchWrapper>> = HashMap::new();
+            for b in batches {
+                let key = b.metadata.flight.clone();
+                groups.entry(key).or_default().push(b);
+            }
 
-            // Acquire catalog lock only for load_table, then drop
-            println!("Waiting for catalog lock...");
-            let table_result = {
-                let catalog_guard = catalog_arc.lock().await;
-                println!("Acquired catalog lock.");
-                catalog_guard.load_table(&table_ident).await
-            };
+            // Step 2: Concatenate per group
+            let mut results = HashMap::new();
+            for (flight, group_batches) in groups {
+                let schema = group_batches[0].data.schema();
+                let refs = group_batches
+                    .iter()
+                    .map(|b| &*b.data)
+                    .collect::<Vec<_>>();
 
-            let table = match table_result {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("Failed to load table {} for flush: {:?}", table_name, e);
-                    return;
+                let concatenated = concat_batches(&schema, refs)
+                    .map(Arc::new)
+                    .map_err(|e| format!("Failed to concatenate for flight {}: {:?}", flight, e))?;
+
+                results.insert(flight, concatenated);
+            }
+
+            Ok(results)
+        }
+
+        fn print_schema_info(&self, batch: &RecordBatch) {
+            println!("Merged RecordBatch Schema (Arrow): {:?}", batch.schema());
+            for (i, field) in batch.schema().fields().iter().enumerate() {
+                println!(
+                    "Arrow Field: Index={}, Name='{}', DataType={:?}",
+                    i,
+                    field.name(),
+                    field.data_type()
+                );
+            }
+        }
+
+        fn make_table_ident(&self, table: String) -> Result<TableIdent, String> {
+            TableIdent::from_strs(vec!["log", &table.clone()])
+                .map_err(|e| format!("Failed to create TableIdent: {:?}", e))
+        }
+
+        async fn load_table(&self, table_ident: &TableIdent) -> Result<Table, String> {
+            let catalog = self.catalog.lock().await;
+            match catalog.load_table(table_ident).await {
+                Ok(table) => {
+                    println!("Table loaded successfully: {:?}", table_ident);
+                    Ok(table)
                 }
-            };
+                Err(e) => {
+                    println!("Failed to load table {:?}: {:?}", table_ident, e);
+                    Err(format!("Failed to load table for flush: {:?}", e))
+                }
+            }
+        }
 
-            // Prepare writer and write the batch
+        fn create_parquet_writer(
+            &self,
+            table: &Table,
+        ) -> Result<
+            DataFileWriterBuilder<
+                ParquetWriterBuilder<DefaultLocationGenerator, DefaultFileNameGenerator>,
+            >,
+            String,
+        > {
             let file_io = table.file_io().clone();
-            let current_schema = table.metadata().current_schema().clone();
+            let schema = table.metadata().current_schema().clone();
 
-            let location_generator =
-                DefaultLocationGenerator::new(table.metadata().clone()).unwrap();
-            let file_name_generator = DefaultFileNameGenerator::new(
-                "data".to_string() + Uuid::now_v7().to_string().as_str(),
+            let location_gen = DefaultLocationGenerator::new(table.metadata().clone())
+                .map_err(|e| format!("Failed to create location generator: {:?}", e))?;
+
+            let file_name_gen = DefaultFileNameGenerator::new(
+                format!("data{}", Uuid::now_v7()),
                 None,
                 iceberg::spec::DataFileFormat::Parquet,
             );
 
             let parquet_writer_builder = ParquetWriterBuilder::new(
                 WriterProperties::default(),
-                current_schema,
+                schema,
                 file_io,
-                location_generator,
-                file_name_generator,
-            );
-            let iceberg_schema: &Schema = table.metadata().current_schema();
-            println!("Iceberg Table Schema: {:?}", iceberg_schema);
-            let data_file_writer_builder =
-                DataFileWriterBuilder::new(parquet_writer_builder, None, 0);
-
-            let mut data_file_writer = match data_file_writer_builder.build().await {
-                Ok(writer) => writer,
-                Err(e) => {
-                    eprintln!("Failed to build DataFileWriter: {:?}", e);
-                    return;
-                }
-            };
-
-            if let Err(e) = data_file_writer.write((*merged_batch).clone()).await {
-                eprintln!("Failed to write merged data to file: {:?}", e);
-                return;
-            }
-            println!(
-                "Data written to Parquet file(s) in S3. Now closing writer and getting file metadata..."
+                location_gen,
+                file_name_gen,
             );
 
-            let data_files = match data_file_writer.close().await {
-                Ok(files) => files,
-                Err(e) => {
-                    eprintln!("Failed to close DataFileWriter and get data files: {:?}", e);
-                    return;
-                }
-            };
+            Ok(DataFileWriterBuilder::new(parquet_writer_builder, None, 0))
+        }
 
-            println!("DataFile metadata obtained. Starting table transaction...");
+        async fn write_and_close(
+            &self,
+            data_file_writer_builder: DataFileWriterBuilder<
+                ParquetWriterBuilder<DefaultLocationGenerator, DefaultFileNameGenerator>,
+            >,
+            batch: Arc<RecordBatch>,
+        ) -> Result<Vec<DataFile>, String> {
+            let mut writer = data_file_writer_builder
+                .build()
+                .await
+                .map_err(|e| format!("Failed to build DataFileWriter: {:?}", e))?;
 
-            // Create a new transaction on the table
-            let tx = Transaction::new(&table);
+            writer
+                .write((*batch).clone())
+                .await
+                .map_err(|e| format!("Failed to write merged data to file: {:?}", e))?;
+
+            writer
+                .close()
+                .await
+                .map_err(|e| format!("Failed to close DataFileWriter: {:?}", e))
+        }
+
+        async fn commit_transaction(
+            &self,
+            table: &Table,
+            data_files: Vec<DataFile>,
+        ) -> Result<Table, String> {
+            let tx = Transaction::new(table);
 
             let commit_id = Some(Uuid::now_v7());
             let key_metadata = vec![];
 
-            let mut fast_append_action = tx.fast_append(commit_id, key_metadata).unwrap();
+            let mut fast_append = tx
+                .fast_append(commit_id, key_metadata)
+                .map_err(|e| format!("Failed to create fast append: {:?}", e))?;
 
-            // Append data files
-            fast_append_action.add_data_files(data_files).unwrap();
+            fast_append
+                .add_data_files(data_files)
+                .map_err(|e| format!("Failed to add data files: {:?}", e))?;
 
-            let updated_tx = fast_append_action.apply().await.unwrap();
+            let updated_tx = fast_append
+                .apply()
+                .await
+                .map_err(|e| format!("Failed to apply transaction: {:?}", e))?;
 
-            let catalog_guard = catalog_arc.lock().await;
-            let committed_table = updated_tx.commit(&*catalog_guard).await.unwrap();
-            drop(catalog_guard);
-        });
-        Ok(())
+            let catalog = self.catalog.lock().await;
+            updated_tx
+                .commit(&*catalog)
+                .await
+                .map_err(|e| format!("Failed to commit transaction: {:?}", e))
+        }
+
+        pub async fn flush_buffer(&self) -> Result<(), String> {
+            if self.is_buffer_empty().await {
+                println!("Buffer is empty, nothing to flush.");
+                return Ok(());
+            }
+
+            let batches = self.drain_buffer().await;
+            let merged_batch = self.concat_batches_grouped(&batches).await?;
+
+            merged_batch.iter().for_each(|(_, batch)| {self.print_schema_info(&batch);});
+            // self.print_schema_info(&merged_batch);
+
+            // let table = &batches.first().unwrap().metadata.flight.clone();
+
+            for (flight, batch) in merged_batch {
+                let table_ident = self.make_table_ident(flight.clone())?;
+
+                let table = self.load_table(&table_ident).await?;
+
+                let data_file_writer_builder = self.create_parquet_writer(&table)?;
+                let data_file = self
+                    .write_and_close(data_file_writer_builder.clone(), batch)
+                    .await?;
+                println!("DataFile metadata obtained. Starting table transaction...");
+
+                self.commit_transaction(&table, data_file).await?;
+            }
+
+            Ok(())
+        }
     }
-}
 
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct CreateTable {
-    pub(crate) table: String,
-    pub(crate) schema: Arc<arrow_schema::Schema>,
-    pub(crate) partition_fields: Vec<String>,
-}
+    impl Actor for IcebergActor {
+        type Context = actix::Context<Self>;
 
-impl Handler<CreateTable> for IcebergActor {
-    type Result = ();
+        fn started(&mut self, ctx: &mut Self::Context) {
+            let address = ctx.address();
+            let registry_address = self.registry_address.clone();
+            actix_rt::spawn(async move {
+                registry_address.do_send(IcebergActorAddr::Real(address));
+            });
+            println!("Started IcebergActor");
+        }
+    }
 
-    fn handle(&mut self, msg: CreateTable, _ctx: &mut Self::Context) -> Self::Result {
-        let catalog = self.catalog.clone();
-        actix_rt::spawn(async move {
-            let namespace_ident = NamespaceIdent::from_vec(vec!["log".to_string()]).unwrap();
-            let namespace_exists = {
-                let guard = catalog.lock().await;
-                guard
-                    .namespace_exists(&namespace_ident)
-                    .await
-                    .unwrap_or(false)
-            };
+    impl Handler<RecordBatchWrapper> for IcebergActor {
+        type Result = ();
+        fn handle(&mut self, msg: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
+            let buffer = self.buffer.clone();
+            actix_rt::spawn(async move {
+                let stream_name = msg.metadata.flight.clone();
+                let mut buffer_guard = buffer.lock().await;
+                if buffer_guard.contains_key(&stream_name) {
+                    buffer_guard
+                        .get_mut(&stream_name)
+                        .unwrap()
+                        .lock()
+                        .await
+                        .push(msg);
+                } else {
+                    let new_buffer = Arc::new(Mutex::new(vec![msg]));
+                    buffer_guard.insert(stream_name, new_buffer);
+                }
+            });
+        }
+    }
 
-            if namespace_exists {
-                info!("Namespace already exists. Skipping creation.");
+    impl Handler<FlushInstruction> for IcebergActor {
+        type Result = Result<(), String>;
 
-                let tables = {
+        fn handle(&mut self, _msg: FlushInstruction, _ctx: &mut Self::Context) -> Self::Result {
+            let this = self.clone();
+            println!("Received FlushInstruction. Attempting to flush buffered data.");
+            actix_rt::spawn(async move {
+                if let Err(e) = this.flush_buffer().await {
+                    eprintln!("Flush failed: {}", e);
+                }
+            });
+            Ok(())
+        }
+    }
+
+    #[derive(Message)]
+    #[rtype(result = "()")]
+    pub struct CreateTable {
+        pub(crate) table: String,
+        pub(crate) schema: Arc<arrow_schema::Schema>,
+        pub(crate) _partition_fields: Vec<String>,
+    }
+
+    impl Handler<CreateTable> for IcebergActor {
+        type Result = ();
+
+        fn handle(&mut self, msg: CreateTable, _ctx: &mut Self::Context) -> Self::Result {
+            let catalog = self.catalog.clone();
+            let namespace = self.namespace.clone();
+            actix_rt::spawn(async move {
+                let namespace_ident = NamespaceIdent::from_vec(vec![namespace]).unwrap();
+                let namespace_exists = {
                     let guard = catalog.lock().await;
-                    guard.list_tables(&namespace_ident).await
+                    guard
+                        .namespace_exists(&namespace_ident)
+                        .await
+                        .unwrap_or(false)
                 };
-                match tables {
-                    Ok(table_idents) => {
-                        info!("Tables in namespace: {:?}", table_idents);
-                    },
-                    Err(e) => {
-                        eprintln!("Failed to list tables in namespace {:?}: {:?}", namespace_ident, e);
+
+                if namespace_exists {
+                    info!("Namespace already exists. Skipping creation.");
+
+                    let tables = {
+                        let guard = catalog.lock().await;
+                        guard.list_tables(&namespace_ident).await
+                    };
+                    match tables {
+                        Ok(table_idents) => {
+                                info!("Tables in namespace: {:?}", table_idents);
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "Failed to list tables in namespace {:?}: {:?}",
+                                namespace_ident, e
+                            );
+                        }
+                    }
+                } else {
+                    let guard = catalog.lock().await;
+                    if let Err(e) = guard
+                        .create_namespace(
+                            &namespace_ident,
+                            HashMap::from([("key1".to_string(), "value1".to_string())]), // TODO: Add valid and useful properties for namespace
+                        )
+                        .await
+                    {
+                        eprintln!("Failed to create namespace {:?}: {:?}", namespace_ident, e);
+                        return;
+                    }
+                    println!("Namespace {:?} created!", namespace_ident);
+                }
+
+                let table_schema = convert_arrow_to_iceberg_schema(&msg.schema);
+
+                let table_build = TableCreation::builder()
+                    .name(msg.table.clone())
+                    .schema(table_schema)
+                    .build();
+
+                // Create table holding lock for just the create call
+                {
+                    let guard = catalog.lock().await;
+                    match guard.create_table(&namespace_ident, table_build).await {
+                        Ok(_) => println!("Table created"),
+                        Err(err) => error!("Failed to create table: {:?}", err),
                     }
                 }
-            } else {
-                let guard = catalog.lock().await;
-                if let Err(e) = guard
-                    .create_namespace(
-                        &namespace_ident,
-                        HashMap::from([("key1".to_string(), "value1".to_string())]), // TODO: Add valid and useful properties for namespace
-                    ).await
-                {
-                    eprintln!("Failed to create namespace {:?}: {:?}", namespace_ident, e);
-                    return;
-                }
-                println!("Namespace {:?} created!", namespace_ident);
-            }
-
-            let table_schema = convert_arrow_to_iceberg_schema(&msg.schema);
-
-            let table_build = TableCreation::builder()
-                .name(msg.table.clone())
-                .schema(table_schema)
-                .build();
-
-            // Create table holding lock for just the create call
-            {
-                let guard = catalog.lock().await;
-                match guard.create_table(&namespace_ident, table_build).await {
-                    Ok(_) => println!("Table created"),
-                    Err(err) => error!("Failed to create table: {:?}", err),
-                }
-            }
-        });
+            });
+        }
     }
-}
 
-#[cfg(test)]
-#[derive(Clone)]
-pub struct MockIcebergActor {
-    pub(crate) registry_address: Addr<Registry>,
-}
-
-#[cfg(test)]
-impl Actor for MockIcebergActor {
-    type Context = Context<Self>;
-}
-
-#[cfg(test)]
-impl Handler<FlushInstruction> for MockIcebergActor {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _msg: FlushInstruction, _ctx: &mut Self::Context) -> Self::Result {
-        todo!()
+    #[derive(Message)]
+    #[rtype(result = "Result<Arc<Mutex<Vec<RecordBatchWrapper>>>, Error>")]
+    pub struct GetBuffer {
+        pub stream: String,
     }
-}
+
+    impl Handler<GetBuffer> for IcebergActor {
+        type Result = ResponseFuture<Result<Arc<Mutex<Vec<RecordBatchWrapper>>>, Error>>;
+        fn handle(&mut self, msg: GetBuffer, _ctx: &mut Self::Context) -> Self::Result {
+            let buffer = self.buffer.clone(); // Arc<Mutex<HashMap<String, Arc<Mutex<Vec<RecordBatchWrapper>>>>>
+
+            Box::pin(async move {
+                let map = buffer.lock().await;
+                map.get(&msg.stream)
+                    .cloned()
+                    .ok_or_else(|| Error::default())
+            })
+        }
+    }
+
+    pub struct FlushInstruction;
+
+    impl Message for FlushInstruction {
+        type Result = Result<(), String>;
+    }
+
+    #[cfg(test)]
+    #[derive(Clone)]
+    pub struct MockIcebergActor {
+        pub(crate) registry_address: Addr<Registry>,
+    }
+
+    #[cfg(test)]
+    impl Actor for MockIcebergActor {
+        type Context = Context<Self>;
+    }
+
+    #[cfg(test)]
+    impl Handler<FlushInstruction> for MockIcebergActor {
+        type Result = Result<(), String>;
+
+        fn handle(&mut self, _msg: FlushInstruction, _ctx: &mut Self::Context) -> Self::Result {
+            todo!()
+        }
+    }
+
+    #[cfg(test)]
+    impl Handler<CreateTable> for MockIcebergActor {
+        type Result = ();
+
+        fn handle(&mut self, _msg: CreateTable, _ctx: &mut Self::Context) -> Self::Result {
+            todo!()
+        }
+    }
+
+    #[cfg(test)]
+    pub mod test {
+        use crate::application::actors::iceberg::{fetch_catalog, s3_props};
+        use crate::config::yaml_reader::{ObjectStorage, S3Properties, Storage};
+
+        #[test]
+        fn test_s3_props_mapping() {
+            let props = S3Properties {
+                aws_region: "us-east-1".to_string(),
+                aws_endpoint: "http://localhost:9000".to_string(),
+                aws_access_key_id: "minio".to_string(),
+                aws_secret_access_key: "secret".to_string(),
+                path_style_access: true,
+            };
+
+            let map = s3_props(props);
+
+            assert_eq!(map.get("aws.region").unwrap(), "us-east-1");
+            assert_eq!(map.get("aws.endpoint").unwrap(), "http://localhost:9000");
+            assert_eq!(map.get("aws.access_key_id").unwrap(), "minio");
+            assert_eq!(map.get("aws.secret_access_key").unwrap(), "secret");
+            assert_eq!(map.get("path-style-access").unwrap(), "true");
+        }
+
+        #[tokio::test]
+        async fn test_fetch_catalog_s3() {
+            let storage = Storage {
+                warehouse: "log".to_string(),
+                namespace: "test".to_string(),
+                object_storage: ObjectStorage::S3(S3Properties {
+                    aws_region: "us-east-1".to_string(),
+                    aws_endpoint: "http://localhost:9000".to_string(),
+                    aws_access_key_id: "minio".to_string(),
+                    aws_secret_access_key: "secret".to_string(),
+                    path_style_access: true,
+                }),
+            };
+
+            let _catalog = fetch_catalog(storage).await;
+            // You can add further assertions if needed.
+        }
+    }

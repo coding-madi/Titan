@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    
+
     use crate::api::flight::flight_service::LogFlightServer;
     use crate::application::actors::broadcast::BroadcastActorAddr;
     use crate::application::actors::db::DbActorAddr;
@@ -57,11 +57,11 @@ mod test {
         flight_data_vec.push(Ok(schema_data));
         flight_data_vec.extend(dicts.into_iter().map(|d| Ok(d.into())));
         flight_data_vec.push(Ok(batch_data.into()));
-        let (dicts, batch_data) = generator
+        let (_dicts, batch_data) = generator
             .encoded_batch(&batch, &mut dict_tracker, &ipc_options)
             .unwrap();
         flight_data_vec.push(Ok(batch_data.into()));
-        let (dicts, batch_data) = generator
+        let (_dicts, batch_data) = generator
             .encoded_batch(&batch, &mut dict_tracker, &ipc_options)
             .unwrap();
         flight_data_vec.push(Ok(batch_data.into()));
@@ -80,7 +80,7 @@ mod test {
             wal_actor_addr: WalActorAddr::Empty,
         };
 
-        let registry_addr = registry.clone().start();
+        let _registry_addr = registry.clone().start();
 
         let flight_data_stream = create_flight_data_vec();
 

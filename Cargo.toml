@@ -41,7 +41,7 @@ iceberg-catalog-rest = "0.5.1"
 parquet = "55.2.0"
 uuid = "1"
 
-chrono = "=0.4.40"
+chrono = "=0.4.41"
 futures-util = "0.3.31"
 futures = "0.3.31"
 tempfile = "3.20.0"
@@ -59,6 +59,8 @@ log = "0.4.27"
 futures-core = "0.3.31"
 http = "0.2.12"
 cargo-llvm-cov = "0.6.18"
+datafusion = "49.0.0"
+sqlparser = "0.58.0"  # Match your DataFusion version if needed
 
 [dependencies.sqlx]
 version = "0.8.6"

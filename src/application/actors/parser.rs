@@ -78,7 +78,7 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
     type Result = ();
 
     fn handle(&mut self, record: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
-        let service_id = &record.metadata.service_id;
+        let _service_id = &record.metadata.service_id;
         let parser = self.clone();
         let registry = self.registry_address.clone();
         let fut = async move {
@@ -93,11 +93,12 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
             };
 
             // Handle mock cases
-            let Real(actor) = registry.send(FetchIcebergActor).await.unwrap().unwrap() else {
+            let Real(iceberg_actor) = registry.send(FetchIcebergActor).await.unwrap().unwrap()
+            else {
                 return;
             };
 
-            actor.send(record.clone()).await.unwrap();
+            iceberg_actor.send(record.clone()).await.unwrap();
 
             match address {
                 WalActorAddr::Real(wal_actors) => {
@@ -121,6 +122,7 @@ use crate::platform::registry::{FetchIcebergActor, FetchWalActor, Registry};
 use regex::Regex;
 use tracing::trace;
 
+#[allow(dead_code)]
 fn fast_regex_match(text_array: &StringArray, pattern: &str) -> Result<BooleanArray, String> {
     let regex = Regex::new(pattern).map_err(|e| format!("Invalid regex: {e}"))?;
     let mut builder = BooleanBuilder::new();
@@ -204,7 +206,7 @@ pub struct DumpRegex;
 impl Handler<DumpRegex> for MockParsingActor {
     type Result = Vec<RegexRequest>;
 
-    fn handle(&mut self, msg: DumpRegex, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: DumpRegex, _ctx: &mut Self::Context) -> Self::Result {
         self.regex.clone()
     }
 }

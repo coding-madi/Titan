@@ -76,7 +76,6 @@ pub struct DbActor {
 ///
 /// * `_database_settings` - Database configuration settings (currently unused).
 /// * `repos` - An `Arc` to a `RepositoryProvider` trait object, providing access to
-///             concrete repository implementations.
 impl DbActor {
     pub async fn new(
         _database_settings: DatabaseConf,
@@ -105,7 +104,7 @@ impl Actor for DbActor {
         let repos = self.repos.clone(); // ✅ clone the field, not self
         spawn(async move {
             // let pool = settings_for_spawn.connection_pool().await;
-            let _ = address.send(ReposReady { repos });
+            let _ = address.send(ReposReady { repos }).await;
             registry_address.do_send(DbActorAddr::Real(address));
         });
         trace!("DbActor started.");

@@ -88,7 +88,8 @@ async def send_streaming_batches(client: SimpleFlightClient,
             logger.warning(f"Batch {i} is too large ({size_mb:.2f} MB). Reduce row count!")
             continue
 
-        path = f"{dataset_base_path}/batch_{i}"
+#         path = f"{dataset_base_path}/batch_{i}"
+        path = "log"
         success = client.send_data(path, table)
         if not success:
             logger.error(f"❌ Failed to send batch {i}")
@@ -104,7 +105,7 @@ async def main():
     client = SimpleFlightClient("127.0.0.1", 50051)
 
     dataset_base_path = "/benchmark/streamed_batches"
-    rows_per_batch = 20000  # Tune this if batch > 3MB
+    rows_per_batch = 60000  # Tune this if batch > 3MB
     num_batches = 400
 
     await send_streaming_batches(client, dataset_base_path, rows_per_batch, num_batches)

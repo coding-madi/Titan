@@ -1,3 +1,4 @@
+use crate::api::http::data_fusion::execute_sql_factory;
 use crate::api::http::health::get_health_endpoint_factory;
 use crate::api::http::regex::{get_all_flights_factory, submit_new_pattern_factory};
 use crate::config::yaml_reader::Settings;
@@ -35,6 +36,7 @@ impl PorosServer for QueryServer {
                     .service(get_health_endpoint_factory())
                     .service(submit_new_pattern_factory())
                     .service(get_all_flights_factory())
+                    .service(execute_sql_factory())
                     .service(Redoc::with_url("/redoc", ApiDoc::openapi())),
             )
             .service(

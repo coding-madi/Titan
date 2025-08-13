@@ -1,5 +1,7 @@
 use arrow_schema::{DataType, Schema};
-use iceberg::spec::{ListType, NestedField, NestedFieldRef, PrimitiveType, Schema as IcebergSchema, StructType, Type};
+use iceberg::spec::{
+    ListType, NestedField, NestedFieldRef, PrimitiveType, Schema as IcebergSchema, StructType, Type,
+};
 use std::sync::Arc;
 
 pub fn convert_arrow_to_iceberg_schema(arrow_schema: &Arc<Schema>) -> IcebergSchema {
@@ -28,33 +30,33 @@ pub fn convert_arrow_to_iceberg_schema(arrow_schema: &Arc<Schema>) -> IcebergSch
                 DataType::FixedSizeBinary(size) => {
                     Type::Primitive(PrimitiveType::Fixed(*size as u64))
                 }
-                DataType::Decimal128(precision, scale) => Type::Primitive(PrimitiveType::Decimal {
-                    precision: 0,
-                    scale: 0,
-                }),
+                DataType::Decimal128(_precision, _scale) => {
+                    Type::Primitive(PrimitiveType::Decimal {
+                        precision: 0,
+                        scale: 0,
+                    })
+                }
                 DataType::List(list_field) => {
                     // For list, we need to recursively convert the inner field
                     field_id_counter += 1;
-                    let element_field_id = & mut field_id_counter;
+                    let element_field_id = &mut field_id_counter;
                     let element_type = convert_arrow_data_type_to_iceberg_type(
-                        &list_field.data_type(),
+                        list_field.data_type(),
                         element_field_id,
                     );
-                    Type::List(
-                        ListType::new(NestedFieldRef::new(NestedField::new(
-                            field_id_counter,
-                            &list_field.name(),
-                            element_type,
-                            !list_field.is_nullable(),
-                        )))
-                    )
-                },
+                    Type::List(ListType::new(NestedFieldRef::new(NestedField::new(
+                        field_id_counter,
+                        list_field.name(),
+                        element_type,
+                        !list_field.is_nullable(),
+                    ))))
+                }
                 DataType::Struct(fields) => {
                     let struct_fields: Vec<NestedFieldRef> = fields
                         .iter()
                         .map(|sub_field| {
                             field_id_counter += 1;
-                            let mut_clone = & mut field_id_counter.clone();
+                            let mut_clone = &mut field_id_counter.clone();
                             let iceberg_type = convert_arrow_data_type_to_iceberg_type(
                                 sub_field.data_type(),
                                 mut_clone,
@@ -79,7 +81,7 @@ pub fn convert_arrow_to_iceberg_schema(arrow_schema: &Arc<Schema>) -> IcebergSch
             // Wrap NestedField in Arc::new()
             Arc::new(NestedField::new(
                 field_id,
-                &field.name(),
+                field.name(),
                 field_type,
                 !field.is_nullable(),
             ))
@@ -113,7 +115,7 @@ fn convert_arrow_data_type_to_iceberg_type(
         DataType::Binary | DataType::LargeBinary => Type::Primitive(PrimitiveType::Binary),
         DataType::Utf8 | DataType::LargeUtf8 => Type::Primitive(PrimitiveType::String),
         DataType::FixedSizeBinary(size) => Type::Primitive(PrimitiveType::Fixed(*size as u64)),
-        DataType::Decimal128(precision, scale) => Type::Primitive(PrimitiveType::Decimal {
+        DataType::Decimal128(_precision, _scale) => Type::Primitive(PrimitiveType::Decimal {
             precision: 0,
             scale: 0,
         }),
@@ -125,15 +127,13 @@ fn convert_arrow_data_type_to_iceberg_type(
                 list_field.data_type(),
                 field_id_counter, // Pass mutable reference
             );
-            Type::List(
-                ListType::new(NestedFieldRef::new(NestedField::new(
-                    element_field_id, // Use the ID generated for the element field
-                    &list_field.name(),
-                    element_type,
-                    !list_field.is_nullable(),
-                )))
-            )
-        },
+            Type::List(ListType::new(NestedFieldRef::new(NestedField::new(
+                element_field_id, // Use the ID generated for the element field
+                list_field.name(),
+                element_type,
+                !list_field.is_nullable(),
+            ))))
+        }
         DataType::Struct(fields) => {
             let struct_fields: Vec<NestedFieldRef> = fields
                 .iter()
@@ -154,12 +154,9 @@ fn convert_arrow_data_type_to_iceberg_type(
                 })
                 .collect();
             Type::Struct(StructType::new(struct_fields))
-        },
+        }
         _ => {
-            panic!(
-                "Unsupported Arrow DataType for Iceberg conversion: {:?}",
-                arrow_data_type
-            );
+            panic!("Unsupported Arrow DataType for Iceberg conversion: {arrow_data_type:?}");
         }
     }
 }

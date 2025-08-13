@@ -1,29 +1,54 @@
-#[cfg(test)]
-use crate::application::actors::broadcast::MockBroadcastActor;
-use crate::application::actors::broadcast::{BroadcastActor, BroadcastActorAddr};
-#[cfg(test)]
-use crate::application::actors::db::DbActorAddr::Mock;
-#[cfg(not(test))]
-use crate::application::actors::db::DbActorAddr::Real;
-#[cfg(test)]
-use crate::application::actors::db::MockDbActor;
-use crate::application::actors::db::{DbActor, DbActorAddr};
-#[cfg(test)]
-use crate::application::actors::flight_registry::MockFlightRegistry;
-use crate::application::actors::flight_registry::{FlightRegistry, FlightRegistryActorAddr};
-#[cfg(test)]
-use crate::application::actors::iceberg::MockIcebergActor;
-use crate::application::actors::iceberg::{IcebergActor, IcebergActorAddr};
-#[cfg(test)]
-use crate::application::actors::parser::MockParsingActor;
-pub(crate) use crate::application::actors::parser::ParserActorAddr;
-#[cfg(test)]
-use crate::application::actors::wal::MockWalActor;
-use crate::application::actors::wal::{WalActor, WalActorAddr};
 use actix::{Actor, Addr, Handler, Message};
 use tracing::log::trace;
-use crate::application::actors::parser::ParsingActor;
 
+// Core Actor imports
+use crate::application::actors::broadcast::{BroadcastActor, BroadcastActorAddr};
+use crate::application::actors::db::{DbActor, DbActorAddr};
+use crate::application::actors::flight_registry::{FlightRegistry, FlightRegistryActorAddr};
+use crate::application::actors::iceberg::{IcebergActor, IcebergActorAddr};
+pub(crate) use crate::application::actors::parser::{ParserActorAddr, ParsingActor};
+use crate::application::actors::wal::{WalActor, WalActorAddr};
+
+// Test-only mock imports
+#[cfg(test)]
+use crate::application::actors::broadcast::MockBroadcastActor;
+#[cfg(test)]
+use crate::application::actors::db::MockDbActor;
+#[cfg(test)]
+use crate::application::actors::flight_registry::MockFlightRegistry;
+#[cfg(test)]
+use crate::application::actors::iceberg::MockIcebergActor;
+#[cfg(test)]
+use crate::application::actors::parser::MockParsingActor;
+#[cfg(test)]
+use crate::application::actors::wal::MockWalActor;
+
+// Registry message definitions
+#[derive(Message)]
+#[rtype(result = "Result<WalActorAddr, ()>")]
+pub struct FetchWalActor;
+
+#[derive(Message)]
+#[rtype(result = "Result<ParserActorAddr, ()>")]
+pub struct FetchParserActor;
+
+#[derive(Message)]
+#[rtype(result = "Result<WalActorAddr, ()>")]
+pub struct FlightWalActor;
+
+#[derive(Message)]
+#[rtype(result = "Result<BroadcastActorAddr, ()>")]
+pub struct FetchBroadcastActor;
+
+#[derive(Message)]
+#[rtype(result = "Result<FlightRegistryActorAddr, ()>")]
+pub struct FetchFlightRegistryActor;
+
+#[derive(Message)]
+#[rtype(result = "Result<IcebergActorAddr, ()>")]
+pub struct FetchIcebergActor;
+
+// Registry struct
 #[derive(Clone)]
 pub struct Registry {
     pub db_actor_addr: DbActorAddr,
@@ -34,6 +59,7 @@ pub struct Registry {
     pub wal_actor_addr: WalActorAddr,
 }
 
+// Registry Builder
 pub struct RegistryBuilder {
     db_actor_addr: Option<DbActorAddr>,
     broadcast_actor_addr: Option<BroadcastActorAddr>,
@@ -45,7 +71,7 @@ pub struct RegistryBuilder {
 
 impl RegistryBuilder {
     pub fn new() -> Self {
-        RegistryBuilder {
+        Self {
             db_actor_addr: None,
             broadcast_actor_addr: None,
             flight_registry_actor_addr: None,
@@ -57,92 +83,78 @@ impl RegistryBuilder {
 
     #[cfg(not(test))]
     pub fn db_actor(mut self, db_actor: DbActor) -> Self {
-        self.db_actor_addr = Some(Real(db_actor.start()));
+        self.db_actor_addr = Some(DbActorAddr::Real(db_actor.start()));
         self
     }
 
     #[cfg(test)]
     pub fn db_actor(mut self, db_actor: MockDbActor) -> Self {
-        self.db_actor_addr = Some(Mock(db_actor.start()));
+        self.db_actor_addr = Some(DbActorAddr::Mock(db_actor.start()));
         self
     }
 
-    // #[cfg(not(test))]
-    pub fn broadcast_actor(mut self, broadcast_actor: BroadcastActor) -> Self {
-        self.broadcast_actor_addr = Some(BroadcastActorAddr::Real(broadcast_actor.start()));
+    pub fn broadcast_actor(mut self, actor: BroadcastActor) -> Self {
+        self.broadcast_actor_addr = Some(BroadcastActorAddr::Real(actor.start()));
         self
     }
 
     #[cfg(test)]
-    pub fn broadcast_actor_mock(mut self, broadcast_actor: MockBroadcastActor) -> Self {
-        self.broadcast_actor_addr = Some(BroadcastActorAddr::Mock(broadcast_actor.start()));
+    pub fn broadcast_actor_mock(mut self, actor: MockBroadcastActor) -> Self {
+        self.broadcast_actor_addr = Some(BroadcastActorAddr::Mock(actor.start()));
         self
     }
 
     #[cfg(not(test))]
-    pub fn flight_registry_actor(mut self, flight_registry_actor: FlightRegistry) -> Self {
-        self.flight_registry_actor_addr =
-            Some(FlightRegistryActorAddr::Real(flight_registry_actor.start()));
+    pub fn flight_registry_actor(mut self, actor: FlightRegistry) -> Self {
+        self.flight_registry_actor_addr = Some(FlightRegistryActorAddr::Real(actor.start()));
         self
     }
 
     #[cfg(test)]
-    pub fn flight_registry_actor(mut self, flight_registry_actor: MockFlightRegistry) -> Self {
-        self.flight_registry_actor_addr =
-            Some(FlightRegistryActorAddr::Mock(flight_registry_actor.start()));
+    pub fn flight_registry_actor(mut self, actor: MockFlightRegistry) -> Self {
+        self.flight_registry_actor_addr = Some(FlightRegistryActorAddr::Mock(actor.start()));
         self
     }
 
     #[cfg(not(test))]
-    pub fn iceberg_actor(mut self, iceberg_actor: IcebergActor) -> Self {
-        self.iceberg_actor_addr = Some(IcebergActorAddr::Real(iceberg_actor.start()));
+    pub fn iceberg_actor(mut self, actor: IcebergActor) -> Self {
+        self.iceberg_actor_addr = Some(IcebergActorAddr::Real(actor.start()));
         self
     }
 
     #[cfg(test)]
-    pub fn iceberg_actor(mut self, iceberg_actor: MockIcebergActor) -> Self {
-        self.iceberg_actor_addr = Some(IcebergActorAddr::Mock(iceberg_actor.start()));
+    pub fn iceberg_actor(mut self, actor: MockIcebergActor) -> Self {
+        self.iceberg_actor_addr = Some(IcebergActorAddr::Mock(actor.start()));
         self
     }
 
     #[cfg(not(test))]
-    pub fn parser_actor(mut self, parser_actor: Vec<ParsingActor>) -> Self {
-        let mut parser_actors_addr: Vec<Addr<ParsingActor>> = vec![];
-        for actor in parser_actor {
-            parser_actors_addr.push(actor.start());
-        }
-        self.parser_actor_addr = Some(ParserActorAddr::Real(parser_actors_addr));
+    pub fn parser_actor(mut self, actors: Vec<ParsingActor>) -> Self {
+        let addrs = actors.into_iter().map(|a| a.start()).collect();
+        self.parser_actor_addr = Some(ParserActorAddr::Real(addrs));
         self
     }
 
     #[cfg(test)]
-    pub fn parser_actor(mut self, parser_actor: Vec<MockParsingActor>) -> Self {
-        let mut parser_actors_addr: Vec<Addr<MockParsingActor>> = vec![];
-        for actor in parser_actor {
-            parser_actors_addr.push(actor.start());
-        }
-        self.parser_actor_addr = Some(ParserActorAddr::Mock(parser_actors_addr));
+    pub fn parser_actor(mut self, actors: Vec<MockParsingActor>) -> Self {
+        let addrs = actors.into_iter().map(|a| a.start()).collect();
+        self.parser_actor_addr = Some(ParserActorAddr::Mock(addrs));
         self
     }
 
     #[cfg(not(test))]
-    pub fn wal_actor(mut self, wal_actor: WalActor) -> Self {
-        let wal_actor_addr = wal_actor.start();
-        self.wal_actor_addr = Some(WalActorAddr::Real(wal_actor_addr));
+    pub fn wal_actor(mut self, actor: WalActor) -> Self {
+        self.wal_actor_addr = Some(WalActorAddr::Real(actor.start()));
         self
     }
 
     #[cfg(test)]
-    pub fn wal_actor(mut self, wal_actor: MockWalActor) -> Self {
-        let wal_actor_addr = wal_actor.start();
-        self.wal_actor_addr = Some(WalActorAddr::Mock(wal_actor_addr));
+    pub fn wal_actor(mut self, actor: MockWalActor) -> Self {
+        self.wal_actor_addr = Some(WalActorAddr::Mock(actor.start()));
         self
     }
 
     pub fn build(self) -> Registry {
-        // Here, you'd typically handle cases where required fields aren't set.
-        // For simplicity, we'll unwrap, but in production, you might return a Result
-        // or provide default values.
         Registry {
             db_actor_addr: self.db_actor_addr.expect("db_actor_addr must be set"),
             broadcast_actor_addr: self
@@ -162,6 +174,7 @@ impl RegistryBuilder {
     }
 }
 
+// Actor impl
 impl Actor for Registry {
     type Context = actix::Context<Self>;
 
@@ -170,109 +183,81 @@ impl Actor for Registry {
     }
 }
 
+// Handlers for setting actors
 impl Handler<DbActorAddr> for Registry {
     type Result = ();
-
-    fn handle(&mut self, msg: DbActorAddr, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: DbActorAddr, _: &mut Self::Context) {
         self.db_actor_addr = msg;
-    }
-}
-
-impl Handler<ParserActorAddr> for Registry {
-    type Result = ();
-    fn handle(&mut self, msg: ParserActorAddr, ctx: &mut Self::Context) -> Self::Result {
-        self.parser_actor_addr = msg;
     }
 }
 
 impl Handler<BroadcastActorAddr> for Registry {
     type Result = ();
-    fn handle(&mut self, msg: BroadcastActorAddr, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: BroadcastActorAddr, _: &mut Self::Context) {
         self.broadcast_actor_addr = msg;
     }
 }
 
 impl Handler<FlightRegistryActorAddr> for Registry {
     type Result = ();
-    fn handle(&mut self, msg: FlightRegistryActorAddr, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: FlightRegistryActorAddr, _: &mut Self::Context) {
         self.flight_registry_actor_addr = msg;
     }
 }
 
 impl Handler<IcebergActorAddr> for Registry {
     type Result = ();
-    fn handle(&mut self, msg: IcebergActorAddr, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: IcebergActorAddr, _: &mut Self::Context) {
         self.iceberg_actor_addr = msg;
+    }
+}
+
+impl Handler<ParserActorAddr> for Registry {
+    type Result = ();
+    fn handle(&mut self, msg: ParserActorAddr, _: &mut Self::Context) {
+        self.parser_actor_addr = msg;
     }
 }
 
 impl Handler<WalActorAddr> for Registry {
     type Result = ();
-    fn handle(&mut self, msg: WalActorAddr, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: WalActorAddr, _: &mut Self::Context) {
         self.wal_actor_addr = msg;
+    }
+}
+
+// Handlers for fetching actors
+impl Handler<FetchWalActor> for Registry {
+    type Result = Result<WalActorAddr, ()>;
+    fn handle(&mut self, _: FetchWalActor, _: &mut Self::Context) -> Self::Result {
+        Ok(self.wal_actor_addr.clone())
     }
 }
 
 impl Handler<FetchParserActor> for Registry {
     type Result = Result<ParserActorAddr, ()>;
-
-    fn handle(&mut self, _msg: FetchParserActor, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: FetchParserActor, _: &mut Self::Context) -> Self::Result {
         Ok(self.parser_actor_addr.clone())
     }
 }
 
-#[derive(Message)]
-#[rtype(result = "Result<WalActorAddr, ()>")]
-pub struct FetchWalActor;
-
-impl Handler<FetchWalActor> for Registry {
-    type Result = Result<WalActorAddr, ()>;
-
-    fn handle(&mut self, msg: FetchWalActor, ctx: &mut Self::Context) -> Self::Result {
-        Ok(self.wal_actor_addr.clone())
-    }
-}
-
-#[derive(Message)]
-#[rtype(result = "Result<ParserActorAddr, ()>")]
-pub struct FetchParserActor;
-
-#[derive(Message)]
-#[rtype(result = "Result<WalActorAddr, ()>")]
-pub struct FlightWalActor;
-
-#[derive(Message)]
-#[rtype(result = "Result<BroadcastActorAddr, ()>")]
-pub struct FetchBroadcastActor;
-
 impl Handler<FetchBroadcastActor> for Registry {
     type Result = Result<BroadcastActorAddr, ()>;
-
-    fn handle(&mut self, msg: FetchBroadcastActor, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: FetchBroadcastActor, _: &mut Self::Context) -> Self::Result {
         Ok(self.broadcast_actor_addr.clone())
     }
 }
 
-#[derive(Message)]
-#[rtype(result = "Result<FlightRegistryActorAddr, ()>")]
-pub struct FetchFlightRegistryActor;
-
 impl Handler<FetchFlightRegistryActor> for Registry {
     type Result = Result<FlightRegistryActorAddr, ()>;
-
-    fn handle(&mut self, msg: FetchFlightRegistryActor, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: FetchFlightRegistryActor, _: &mut Self::Context) -> Self::Result {
         Ok(self.flight_registry_actor_addr.clone())
     }
 }
 
-#[derive(Message)]
-#[rtype(result = "Result<IcebergActorAddr, ()>")]
-pub struct FetchIcebergActor;
-
 impl Handler<FetchIcebergActor> for Registry {
     type Result = Result<IcebergActorAddr, ()>;
-
-    fn handle(&mut self, msg: FetchIcebergActor, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: FetchIcebergActor, _: &mut Self::Context) -> Self::Result {
         Ok(self.iceberg_actor_addr.clone())
     }
 }

@@ -57,7 +57,12 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
     let db_actor = DbActor::new(config.database.clone(), repos, registry_actor_addr.clone()).await;
 
     // Start IcebergActor once and get its address
-    let iceberg_actor_instance = IcebergActor::default(registry_actor_addr.clone()); // The actor instance
+    let iceberg_actor_instance = IcebergActor::new(
+        registry_actor_addr.clone(),
+        config.storage.clone(),
+        config.storage.namespace.clone(),
+    )
+    .await; // The actor instance
 
     // WalActor uses the Addr of the *started* IcebergActor
     let wal_actor_instance = WalActor::new(registry_actor_addr.clone());
@@ -67,12 +72,12 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
 
     let flight_registry_actor = FlightRegistry::new(registry_actor_addr.clone()).await;
     let broadcast_actor = BroadcastActor::new(registry_actor_addr.clone());
-    let mut broadcast_actor2 = broadcast_actor.clone();
+    let broadcast_actor2 = broadcast_actor.clone();
 
     let registry = RegistryBuilder::new()
         .db_actor(db_actor)
         .parser_actor(parsing_actor_vec)
-        .iceberg_actor(iceberg_actor_instance.await.unwrap()) // Pass the *instance* to the builder
+        .iceberg_actor(iceberg_actor_instance.unwrap()) // Pass the *instance* to the builder
         .flight_registry_actor(flight_registry_actor)
         .broadcast_actor(broadcast_actor2)
         .wal_actor(wal_actor_instance) // Pass the WalActor instance
@@ -94,7 +99,7 @@ use crate::application::actors::parser::ParserActorAddr;
 #[cfg(test)]
 use crate::application::actors::wal::WalActorAddr;
 #[cfg(test)]
-pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) -> Arc<Registry> {
+pub async fn init_actors(_config: &Settings, _repos: Arc<dyn RepositoryProvider>) -> Arc<Registry> {
     let registry = Registry {
         db_actor_addr: DbActorAddr::Empty,
         broadcast_actor_addr: BroadcastActorAddr::Empty,
@@ -145,7 +150,7 @@ mod tests {
 
     use crate::config::database_conf::{DatabaseConf, DatabaseType};
     use crate::config::flight_conf::FlightConf;
-    use crate::config::yaml_reader::ServerType;
+    use crate::config::yaml_reader::{ObjectStorage, S3Properties, ServerType, Storage};
     use crate::core::db::factory::database_factory::SqliteRepositoryProvider;
     use actix_rt::test;
     use sqlx::SqlitePool;
@@ -177,6 +182,17 @@ mod tests {
             flight: FlightConf {
                 address: "".to_string(),
                 port: 0,
+            },
+            storage: Storage {
+                warehouse: "log".to_string(),
+                namespace: "log".to_string(),
+                object_storage: ObjectStorage::S3(S3Properties {
+                    aws_region: "".to_string(),
+                    aws_endpoint: "".to_string(),
+                    aws_access_key_id: "".to_string(),
+                    aws_secret_access_key: "".to_string(),
+                    path_style_access: false,
+                }),
             },
         }
     }

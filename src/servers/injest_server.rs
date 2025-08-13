@@ -61,7 +61,7 @@ impl PorosServer for InjestServer {
     }
 
     async fn bootstrap_server(
-        self: Self,
+        self: InjestServer,
         config: &Settings,
     ) -> Result<
         (
@@ -111,7 +111,7 @@ impl PorosServer for InjestServer {
         ))
     }
 
-    async fn start_server(self: Self, config: &Settings)
+    async fn start_server(self: InjestServer, config: &Settings)
     where
         Self: Sized,
     {

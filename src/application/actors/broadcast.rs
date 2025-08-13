@@ -60,48 +60,57 @@ impl Actor for BroadcastActor {
     }
 }
 
-// We need to initialize the actor and pass the handles to the Query server.
-// The query server will then use these handles to send messages to the regex actors.
-// The regex actors will then process the messages and return results to the query server.
 impl Handler<RegexRequest> for BroadcastActor {
     type Result = Result<(), ValidationErrors>;
 
-    fn handle(&mut self, regex_request: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
-        // let x = self.registry_address.send(FetchParserActor);
-        let x = self.clone();
-        let fut = async move {
-            match x.registry_address.send(FetchParserActor).await {
-                Ok(parser) => match parser {
-                    Ok(pattern) => match pattern {
-                        ParserActorAddr::Real(parser) => {
-                            for i in 0..parser.len() {
-                                parser[i].do_send(regex_request.clone())
-                            }
-                        }
-                        #[cfg(test)]
-                        ParserActorAddr::Mock(add) => {
-                            add[0].do_send(regex_request.clone());
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                },
+    fn handle(&mut self, regex_request: RegexRequest, ctx: &mut Self::Context) -> Self::Result {
+        let registry_addr = self.registry_address.clone();
+        let request = regex_request.clone();
+
+        // Spawn an async future in actor context
+        async move {
+            // Send message to fetch ParserActorAddr
+            let parser_addr_res = registry_addr.send(FetchParserActor).await;
+
+            let parser_addr = match parser_addr_res {
+                Ok(Ok(parser)) => parser,
+                _ => {
+                    // Could log error here or handle failure more gracefully
+                    return;
+                }
+            };
+
+            match parser_addr {
+                ParserActorAddr::Real(parsers) => {
+                    for parser in parsers {
+                        parser.do_send(request.clone());
+                    }
+                }
+                #[cfg(test)]
+                ParserActorAddr::Mock(parsers) => {
+                    if let Some(first) = parsers.get(0) {
+                        first.do_send(request.clone());
+                    }
+                }
                 _ => {}
             }
-        };
-        fut.into_actor(self).spawn(_ctx);
+        }
+        .into_actor(self)
+        .spawn(ctx);
+
         Ok(())
     }
 }
 
 use crate::api::http::regex::RegexRequest;
 use crate::platform::registry::{FetchParserActor, ParserActorAddr, Registry};
+use actix::fut::ActorFutureExt;
 use std::sync::Arc;
 use validator::ValidationErrors;
 
 #[derive(Debug, Clone, actix::Message)]
 #[rtype(result = "()")]
-pub struct RecordBatchWrapper {
+pub struct  RecordBatchWrapper {
     pub metadata: Metadata,
     pub data: Arc<RecordBatch>,
 }
@@ -112,36 +121,33 @@ impl Handler<RecordBatchWrapper> for BroadcastActor {
     fn handle(
         &mut self,
         record_batch: RecordBatchWrapper,
-        _ctx: &mut Self::Context,
+        ctx: &mut Self::Context,
     ) -> Self::Result {
-        let mut broadcast_actor = self.clone();
-        let fut = async move {
-            match broadcast_actor
-                .registry_address
-                .send(FetchParserActor)
-                .await
-            {
-                Ok(parser) => match parser {
-                    Ok(pattern) => match pattern {
-                        ParserActorAddr::Real(parser) => {
-                            let current_shard_idx = &mut broadcast_actor.next_shard_idx;
-                            let current_shard_idx =
-                                (current_shard_idx.wrapping_add(1)) % parser.len();
-                            parser
-                                .get(current_shard_idx)
-                                .unwrap()
-                                .do_send(record_batch.clone());
-                        }
-                        #[cfg(test)]
-                        ParserActorAddr::Mock(add) => {}
-                        _ => {}
-                    },
-                    _ => {}
-                },
-                _ => {}
-            }
-        };
-        fut.into_actor(self).spawn(_ctx);
+        let registry_addr = self.registry_address.clone();
+        let mut next_shard_idx = self.next_shard_idx;
+        let record_batch_cloned = record_batch.clone();
+
+        async move {
+            let parser_result = registry_addr.send(FetchParserActor).await;
+
+            let parsers = match parser_result {
+                Ok(Ok(ParserActorAddr::Real(p))) if !p.is_empty() => p,
+                _ => return, // No valid parsers available
+            };
+
+            // Round-robin shard index update and send
+            let idx = next_shard_idx % parsers.len();
+            parsers[idx].do_send(record_batch_cloned);
+
+            // Update the shard index for next time
+            next_shard_idx = (next_shard_idx.wrapping_add(1)) % parsers.len();
+        }
+        .into_actor(self)
+        .map(move |_, actor, _| {
+            // Update the actor's shard index
+            actor.next_shard_idx = next_shard_idx;
+        })
+        .spawn(ctx);
     }
 }
 

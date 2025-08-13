@@ -122,7 +122,7 @@ pub struct FlightData {
 impl Handler<FlightData> for FlightRegistry {
     type Result = ();
 
-    fn handle(&mut self, msg: FlightData, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: FlightData, _ctx: &mut Self::Context) -> Self::Result {
         todo!()
     }
 }
@@ -144,7 +144,7 @@ impl Actor for MockFlightRegistry {
 impl Handler<CheckFlight> for MockFlightRegistry {
     type Result = std::result::Result<bool, Error>;
 
-    fn handle(&mut self, flight_check: CheckFlight, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _flight_check: CheckFlight, _ctx: &mut Self::Context) -> Self::Result {
         unimplemented!()
     }
 }
@@ -153,7 +153,7 @@ impl Handler<CheckFlight> for MockFlightRegistry {
 impl Handler<ListFlights> for MockFlightRegistry {
     type Result = Result<HashSet<String>, Error>;
 
-    fn handle(&mut self, msg: ListFlights, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: ListFlights, _ctx: &mut Self::Context) -> Self::Result {
         todo!()
     }
 }
@@ -162,7 +162,7 @@ impl Handler<ListFlights> for MockFlightRegistry {
 impl Handler<RegexRequest> for MockFlightRegistry {
     type Result = Result<(), ValidationErrors>;
 
-    fn handle(&mut self, msg: RegexRequest, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
         todo!()
     }
 }

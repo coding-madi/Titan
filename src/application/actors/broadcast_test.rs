@@ -51,7 +51,7 @@ pub mod test {
 
         let wal_actor = MockWalActor::new(registry_address.clone());
 
-        let registry = RegistryBuilder::new()
+        let _registry = RegistryBuilder::new()
             .broadcast_actor(broadcast_actor)
             .db_actor(db_actor)
             .flight_registry_actor(flight_registry_actor)

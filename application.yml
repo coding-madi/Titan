@@ -9,5 +9,17 @@ database:
 flight:
   address: 127.0.0.1
   port: 50051
+storage:
+  warehouse: "log"
+  namespace: "log"
+  object_storage:
+    S3:
+        aws_region: "us-east-2"
+        aws_endpoint: "http://localhost:8181/catalog"
+        aws_access_key_id: "x"
+        aws_secret_access_key: "y"
+        path_style_access: false
+#    - gcs:
+#        path_style_access: false
 server: ALL
 

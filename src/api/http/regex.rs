@@ -8,6 +8,7 @@ use actix_web::web::{Data, Path};
 use actix_web::{HttpResponse, Resource, Responder, web};
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashSet;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
@@ -70,8 +71,6 @@ impl Display for ErrorType {
 }
 
 impl std::error::Error for ErrorType {}
-
-/// ========== Validations ==========
 
 pub fn validate_regex_pattern(patterns: &Vec<Pattern>) -> Result<(), ValidationError> {
     for pattern in patterns {
@@ -141,8 +140,6 @@ pub async fn submit_new_pattern(
         _ => HttpResponse::InternalServerError().json("Internal server error"),
     }
 }
-
-/// ========== Utility Functions ==========
 
 async fn check_if_flight_exists<F>(
     flight_registry_actor: Addr<F>,

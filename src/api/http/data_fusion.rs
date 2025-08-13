@@ -1,0 +1,91 @@
+use crate::application::actors::iceberg::{GetBuffer, IcebergActorAddr};
+use crate::core::utils::query_parsing::extract_query_table_names;
+use crate::platform::registry::Registry;
+use actix_web::web::Data;
+use actix_web::{FromRequest, Resource, web};
+use arrow_array::RecordBatch;
+use datafusion::catalog::MemTable;
+use datafusion::prelude::*;
+use futures_util::SinkExt;
+use serde_derive::Deserialize;
+use std::io::{Error, ErrorKind};
+use std::sync::Arc;
+use tracing::error;
+use tracing_log::log;
+pub struct DataFusion;
+
+pub fn execute_sql_factory() -> Resource {
+    web::resource("/sql").route(web::post().to(execute))
+}
+
+#[derive(Deserialize)]
+pub struct ExecuteSql {
+    stream_name: String,
+    sql: String,
+}
+
+pub async fn execute(
+    execute_sql: web::Json<ExecuteSql>,
+    registry: Data<Arc<Registry>>,
+) -> Result<String, Error> {
+    let registry_actor = registry.iceberg_actor_addr.clone();
+    let ctx = SessionContext::new();
+    match registry_actor {
+        IcebergActorAddr::Real(iceberg_actor) => {
+            let buffer = match iceberg_actor
+                .send(GetBuffer {
+                    stream: execute_sql.stream_name.clone(),
+                })
+                .await
+            {
+                Ok(inner) => match inner {
+                    Ok(buf) => buf,
+                    Err(e) => {
+                        error!("Actor returned error: {:?}", e);
+                        panic!("Actor returned error");
+                    }
+                },
+                Err(mailbox_err) => {
+                    error!("Mailbox error: {:?}", mailbox_err);
+                    panic!("Mailbox overflow or actor stopped");
+                }
+            };
+
+            let all_batches: Vec<RecordBatch> = buffer
+                .lock()
+                .await
+                .iter()
+                .map(|w| w.data.as_ref().clone()) // extract the RecordBatch from wrapper
+                .collect();
+
+            let registered_table = MemTable::try_new(all_batches[0].schema(), vec![all_batches])?;
+
+            ctx.register_table(execute_sql.stream_name.clone(), Arc::new(registered_table))?;
+
+            let df = ctx.sql(&execute_sql.sql).await;
+
+            match df {
+                Ok(df) => {
+                    let results = df.collect().await?;
+                    let formatted = arrow::util::pretty::pretty_format_batches(&results)
+                        .unwrap()
+                        .to_string();
+                    Ok(formatted)
+                }
+                Err(e) => {
+                    println!("{:?}", e);
+                    unimplemented!()
+                }
+            }
+        }
+
+        #[cfg(test)]
+        IcebergActorAddr::Mock(actor) => {
+            // let x = actor.send(GetBuffer).await;
+            unimplemented!()
+        }
+        IcebergActorAddr::Empty => {
+            panic!("No Iceberg Actor");
+        }
+    }
+}

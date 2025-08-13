@@ -7,7 +7,7 @@ pub mod test {
     pub struct MockWalActor {}
 
     impl MockWalActor {
-        pub fn new(registry_address: Addr<Registry>) -> Self {
+        pub fn new(_registry_address: Addr<Registry>) -> Self {
             MockWalActor {}
         }
     }

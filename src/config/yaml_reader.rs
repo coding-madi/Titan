@@ -8,6 +8,34 @@ pub struct Settings {
     pub database: DatabaseConf,
     pub server: ServerType,
     pub flight: FlightConf,
+    pub storage: Storage,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct Storage {
+    pub warehouse: String,
+    pub namespace: String,
+    pub object_storage: ObjectStorage,
+}
+
+#[derive(Deserialize, Clone)]
+pub enum ObjectStorage {
+    S3(S3Properties),
+    GCS(GCSProperties),
+}
+
+#[derive(Deserialize, Clone)]
+pub struct S3Properties {
+    pub aws_region: String,
+    pub aws_endpoint: String,
+    pub aws_access_key_id: String,
+    pub aws_secret_access_key: String,
+    pub path_style_access: bool,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct GCSProperties {
+    pub path_style_access: bool,
 }
 
 #[derive(Deserialize)]

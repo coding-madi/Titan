@@ -1,0 +1,22 @@
+meta {
+  name: localhost:8888/sql
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/sql
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "sql": "select  * from log_list  limit 2000",
+    "stream_name": "log_list"
+  }
+}
+
+settings {
+  encodeUrl: true
+}
