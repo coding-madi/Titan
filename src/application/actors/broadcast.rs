@@ -110,7 +110,7 @@ use validator::ValidationErrors;
 
 #[derive(Debug, Clone, actix::Message)]
 #[rtype(result = "()")]
-pub struct  RecordBatchWrapper {
+pub struct RecordBatchWrapper {
     pub metadata: Metadata,
     pub data: Arc<RecordBatch>,
 }

@@ -52,8 +52,6 @@ pub async fn execute(
             };
 
             let all_batches: Vec<RecordBatch> = buffer
-                .lock()
-                .await
                 .iter()
                 .map(|w| w.data.as_ref().clone()) // extract the RecordBatch from wrapper
                 .collect();

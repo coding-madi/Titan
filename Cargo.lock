@@ -1497,6 +1497,19 @@ checksum = "04d2cd9c18b9f454ed67da600630b021a8a80bf33f8c95896ab33aaf1c26b728"
 
 [[package]]
 name = "dashmap"
+version = "5.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
+dependencies = [
+ "cfg-if",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
+name = "dashmap"
 version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
@@ -1572,7 +1585,7 @@ checksum = "4b6b29c9c922959285fac53139e12c81014e2ca54704f20355edd7e9d11fd773"
 dependencies = [
  "arrow",
  "async-trait",
- "dashmap",
+ "dashmap 6.1.0",
  "datafusion-common",
  "datafusion-common-runtime",
  "datafusion-datasource",
@@ -1782,7 +1795,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8209805fdce3d5c6e1625f674d3e4ce93e995a56d3709a0bb8d4361062652596"
 dependencies = [
  "arrow",
- "dashmap",
+ "dashmap 6.1.0",
  "datafusion-common",
  "datafusion-expr",
  "futures",
@@ -2101,7 +2114,7 @@ checksum = "dd5f2fe790f43839c70fb9604c4f9b59ad290ef64e1d2f927925dd34a9245406"
 dependencies = [
  "arrow",
  "async-trait",
- "dashmap",
+ "dashmap 6.1.0",
  "datafusion-common",
  "datafusion-common-runtime",
  "datafusion-execution",
@@ -4280,6 +4293,7 @@ dependencies = [
  "clap",
  "config",
  "crc32fast",
+ "dashmap 5.5.3",
  "datafusion",
  "flatbuffers 24.12.23",
  "futures",

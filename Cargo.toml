@@ -61,6 +61,7 @@ http = "0.2.12"
 cargo-llvm-cov = "0.6.18"
 datafusion = "49.0.0"
 sqlparser = "0.58.0"  # Match your DataFusion version if needed
+dashmap = "5" # similar to java's concurrent hashmap
 
 [dependencies.sqlx]
 version = "0.8.6"
