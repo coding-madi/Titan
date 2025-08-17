@@ -20,6 +20,7 @@ use crate::application::actors::flight_registry::MockFlightRegistry;
 use crate::application::actors::iceberg::MockIcebergActor;
 #[cfg(test)]
 use crate::application::actors::parser::MockParsingActor;
+use crate::application::actors::rhai_meter::{RhaiActor, RhaiActorAddr};
 #[cfg(test)]
 use crate::application::actors::wal::MockWalActor;
 

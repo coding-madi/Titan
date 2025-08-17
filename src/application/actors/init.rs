@@ -96,6 +96,7 @@ use crate::application::actors::flight_registry::FlightRegistryActorAddr;
 use crate::application::actors::iceberg::IcebergActorAddr;
 #[cfg(test)]
 use crate::application::actors::parser::ParserActorAddr;
+use crate::application::actors::rhai_meter::RhaiActorAddr;
 #[cfg(test)]
 use crate::application::actors::wal::WalActorAddr;
 #[cfg(test)]
@@ -154,13 +155,13 @@ mod tests {
     use crate::core::db::factory::database_factory::SqliteRepositoryProvider;
     use actix_rt::test;
     use sqlx::SqlitePool;
-    // For #[test] macro that provides Actix runtime
+    // For #[tests] macro that provides Actix runtime
 
     async fn setup_test_db(db_name: &str) -> (SqlitePool, Arc<SqliteRepositoryProvider>) {
         let connection_string = format!("sqlite::{db_name}?mode=memory&cache=shared");
         let pool = SqlitePool::connect(&connection_string)
             .await
-            .expect("Failed to create SQLite in-memory pool for test");
+            .expect("Failed to create SQLite in-memory pool for tests");
         let repos = SqliteRepositoryProvider::new(pool.clone());
         (pool, Arc::new(repos))
     }
@@ -172,7 +173,7 @@ mod tests {
             port: 0,
             username: "".to_string(),
             password: Default::default(),
-            database_name: db_name.to_string(), // Use a different name for each test if needed
+            database_name: db_name.to_string(), // Use a different name for each tests if needed
             max_active_connections: 0,
         };
 

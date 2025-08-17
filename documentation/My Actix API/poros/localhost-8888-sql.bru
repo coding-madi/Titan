@@ -12,7 +12,7 @@ post {
 
 body:json {
   {
-    "sql": "select  * from log_list  limit 2000",
+    "sql": "select  * from log_list a join log b on a.event_id = b.event_id limit 60000",
     "stream_name": "log_list"
   }
 }

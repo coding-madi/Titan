@@ -23,25 +23,29 @@ pub struct ParsingActor {
     pub patterns: HashMap<String, Vec<Pattern>>, // flight_id → patterns
     pub schema: HashMap<String, Schema>,         // service_id → schema
     pub registry_address: Addr<Registry>,
+    pub rhai_meter_actor: Addr<RhaiActor>
 }
 
 impl ParsingActor {
     pub fn default(registry_address: Addr<Registry>) -> Self {
+        let rhai_meter_actor = RhaiActor::new(registry_address.clone()).start();
         Self {
             patterns: HashMap::new(),
             schema: HashMap::new(),
             registry_address,
+            rhai_meter_actor
         }
     }
 
     pub fn new(team_id: String, registry_address: Addr<Registry>) -> Self {
         let patterns = get_patterns_from_database(&team_id);
         let schema = get_flight_and_schemas(&team_id);
-
+        let rhai_meter_actor = RhaiActor::new(registry_address.clone()).start();
         Self {
             patterns,
             schema,
             registry_address,
+            rhai_meter_actor
         }
     }
 }
@@ -81,6 +85,7 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
         let _service_id = &record.metadata.service_id;
         let parser = self.clone();
         let registry = self.registry_address.clone();
+        let rhai_meter = self.rhai_meter_actor.clone();
         let fut = async move {
             let registry_address = parser.registry_address.clone();
             let Ok(result) = registry_address.send(FetchWalActor).await else {
@@ -102,16 +107,16 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
 
             match address {
                 WalActorAddr::Real(wal_actors) => {
-                    wal_actors.do_send(record);
+                    wal_actors.do_send(record.clone());
                 }
                 #[cfg(test)]
                 WalActorAddr::Mock(wal_actors) => {
-                    wal_actors.do_send(record);
+                    wal_actors.do_send(record.clone());
                 }
                 _ => {}
             }
+            rhai_meter.do_send(record.clone());
         };
-
         fut.into_actor(self).spawn(_ctx);
     }
 }
@@ -121,6 +126,7 @@ use crate::application::actors::wal::WalActorAddr;
 use crate::platform::registry::{FetchIcebergActor, FetchWalActor, Registry};
 use regex::Regex;
 use tracing::trace;
+use crate::application::actors::rhai_meter::RhaiActor;
 
 #[allow(dead_code)]
 fn fast_regex_match(text_array: &StringArray, pattern: &str) -> Result<BooleanArray, String> {

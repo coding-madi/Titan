@@ -1,4 +1,6 @@
+use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Schema};
+use iceberg::TableIdent;
 use iceberg::spec::{
     ListType, NestedField, NestedFieldRef, PrimitiveType, Schema as IcebergSchema, StructType, Type,
 };
@@ -158,5 +160,22 @@ fn convert_arrow_data_type_to_iceberg_type(
         _ => {
             panic!("Unsupported Arrow DataType for Iceberg conversion: {arrow_data_type:?}");
         }
+    }
+}
+
+pub fn make_table_ident(table: String) -> Result<TableIdent, String> {
+    TableIdent::from_strs(vec!["log", &table.clone()])
+        .map_err(|e| format!("Failed to create TableIdent: {:?}", e))
+}
+
+pub fn print_schema_info(batch: &RecordBatch) {
+    println!("Merged RecordBatch Schema (Arrow): {:?}", batch.schema());
+    for (i, field) in batch.schema().fields().iter().enumerate() {
+        println!(
+            "Arrow Field: Index={}, Name='{}', DataType={:?}",
+            i,
+            field.name(),
+            field.data_type()
+        );
     }
 }

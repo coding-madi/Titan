@@ -106,7 +106,7 @@ async def main():
 
     dataset_base_path = "/benchmark/streamed_batches"
     rows_per_batch = 60000  # Tune this if batch > 3MB
-    num_batches = 400
+    num_batches = 4000
 
     await send_streaming_batches(client, dataset_base_path, rows_per_batch, num_batches)
 
