@@ -5,6 +5,7 @@ use crate::config::yaml_reader::Settings;
 use crate::core::error::exception::server_error::ServerError;
 use crate::platform::registry::Registry;
 use crate::servers::server::PorosServer;
+use actix::Addr;
 use actix_web::web::{Data, ServiceConfig};
 use actix_web::{App, HttpServer, web};
 use std::net::TcpListener;
@@ -20,7 +21,7 @@ use utoipa_redoc::{Redoc, Servable};
 use utoipa_swagger_ui::SwaggerUi;
 
 pub struct QueryServer {
-    pub actor_registry: Arc<Registry>,
+    pub actor_registry: Addr<Registry>,
 }
 
 impl PorosServer for QueryServer {
@@ -67,7 +68,7 @@ impl PorosServer for QueryServer {
                     App::new()
                         .wrap(TracingLogger::default())
                         .configure(Self::configure_routes)
-                        .app_data(Data::new(actor_registry.clone()))
+                        .app_data(Data::new(Arc::new(actor_registry.clone())))
                 })
                 .listen(listener)?
                 .workers(num_cpus::get())

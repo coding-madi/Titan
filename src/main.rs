@@ -1,6 +1,8 @@
+use actix::Addr;
 use poros::config::yaml_reader::ServerType::{ALL, INJEST, QUERY};
 use poros::config::yaml_reader::read_configuration;
 use poros::version::print_version;
+use std::sync::Arc;
 
 use clap::Parser;
 use poros::application::actors::db::DbActorAddr::Real;
@@ -9,6 +11,7 @@ use poros::application::actors::init::init_actors;
 use poros::core::db::init_repositories;
 use poros::core::logging::file_writer::FileWriter;
 use poros::core::logging::subscriber::{get_subscribers, init_subscriber};
+use poros::platform::registry::{FetchDbActor, Registry};
 use poros::servers::full_server::FullServer;
 use poros::servers::injest_server::InjestServer;
 use poros::servers::query_server::QueryServer;
@@ -30,9 +33,8 @@ async fn main() -> std::io::Result<()> {
     print_version();
 
     // TODO: implement log rotation
-    // Log file appender and tracer configuration
     let file_writer = FileWriter::new("poros.log");
-    let subscriber = get_subscribers("poros", "INFO", file_writer);
+    let subscriber = get_subscribers("poros", "DEBUG", file_writer);
     init_subscriber(subscriber);
     let config = read_configuration();
 
@@ -40,8 +42,9 @@ async fn main() -> std::io::Result<()> {
     let repositories = init_repositories(&config).await;
 
     // factory for creating actors
-    let actor_registry = init_actors(&config, repositories.clone()).await;
-    let db_actor_addr = actor_registry.db_actor_addr.clone();
+    let actor_registry: Addr<Registry> = init_actors(&config, repositories.clone()).await;
+
+    let db_actor_addr = actor_registry.send(FetchDbActor).await.unwrap().unwrap();
 
     match db_actor_addr {
         Real(addr) => {
@@ -68,6 +71,7 @@ async fn main() -> std::io::Result<()> {
             let _ = QueryServer::start_server(query_server, &config).await;
         }
         // Both query and flight servers initialization
+        // This is the recommended configuration.
         ALL => {
             let injest_server = InjestServer {
                 actor_registry: actor_registry.clone(),

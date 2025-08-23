@@ -12,8 +12,8 @@ post {
 
 body:json {
   {
-    "sql": "select  * from log_list a join log b on a.event_id = b.event_id limit 60000",
-    "stream_name": "log_list"
+    "sql": "select struct_field_2 from log where struct_field_2.nested_int_2 < 500 limit 100",
+    "stream_name": "log"
   }
 }
 

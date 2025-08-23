@@ -1,6 +1,6 @@
+use rhai::{Array, Dynamic, Engine, Scope};
 use std::sync::Arc;
 use std::time::Instant;
-use rhai::{Array, Dynamic, Engine, Scope};
 fn sum_slice(data: &[i64]) -> i64 {
     data.iter().sum()
 }
@@ -12,7 +12,6 @@ fn sum_list_rhai(data: &mut Array) -> i64 {
 fn sum_arc_vec(data: Arc<Vec<i64>>) -> i64 {
     data.iter().sum()
 }
-
 
 #[test]
 fn sum_of_list() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,15 +55,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use std::sync::Arc;
 
     let n = 1_000_000;
-    let rust_data: Arc<Vec<i64>> = Arc::new(
-        (1..=n as i64).into_par_iter().collect()
-    );
+    let rust_data: Arc<Vec<i64>> = Arc::new((1..=n as i64).into_par_iter().collect());
 
     let mut scope = Scope::new();
     scope.push_constant("data", Dynamic::from(rust_data.clone()));
 
     // Register Rust function with Rhai
-    engine.register_fn("sum_list", sum_arc_vec);    // Rhai script decides the operation
+    engine.register_fn("sum_list", sum_arc_vec); // Rhai script decides the operation
     let script = r#"
         let total = sum_list(data);
         print(`Sum is: ${total}`);

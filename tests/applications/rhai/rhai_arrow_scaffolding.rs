@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use arrow_array::{Int64Array, StringArray, RecordBatch};
+use arrow_array::{Int64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
-use rhai::{Engine, Scope, Dynamic, Map};
+use rhai::{Dynamic, Engine, Map, Scope};
+use std::sync::Arc;
 
 #[test]
 fn arrow_rhai_scaffolding_only() -> Result<(), Box<dyn std::error::Error>> {
@@ -67,19 +67,22 @@ fn arrow_rhai_scaffolding_only() -> Result<(), Box<dyn std::error::Error>> {
     println!("Declared rules (no computation yet): {:?}", rules);
 
     for rule in &rules {
-        let op: String = rule.get("op")
+        let op: String = rule
+            .get("op")
             .and_then(|v| v.clone().try_cast())
             .unwrap_or_default();
 
-        let column: String = rule.get("column")
+        let column: String = rule
+            .get("column")
             .and_then(|v| v.clone().try_cast())
             .unwrap_or_default();
 
-        let filter: Option<String> = rule
-            .get("filter")
-            .and_then(|v| v.clone().try_cast());
+        let filter: Option<String> = rule.get("filter").and_then(|v| v.clone().try_cast());
 
-        println!("Executing {} on column {} with filter {:?}", op, column, filter);
+        println!(
+            "Executing {} on column {} with filter {:?}",
+            op, column, filter
+        );
     }
 
     Ok(())

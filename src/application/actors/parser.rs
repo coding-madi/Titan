@@ -1,93 +1,117 @@
-use actix::{
-    Actor, Addr, AsyncContext, Context, ContextFutureSpawner, Handler, Message, WrapFuture,
-};
+use actix::{Actor, ActorFutureExt, Addr, AsyncContext, Context, ContextFutureSpawner, Handler, MailboxError, Message, ResponseActFuture, WrapFuture};
 use arrow::datatypes::Schema;
 use arrow_array::{Array, BooleanArray, StringArray};
 use std::collections::HashMap;
-use validator::ValidationErrors;
+use validator::{Validate, ValidationErrors};
 
-pub(crate) use crate::api::http::regex::{Pattern, RegexRequest};
-use crate::application::actors::broadcast::RecordBatchWrapper;
+use crate::application::actors::broadcast::{BroadcastActorWrapper, RecordBatchWrapper};
 
 #[derive(Message, Clone)]
 #[rtype(result = "()")]
 pub enum ParserActorAddr {
-    Real(Vec<Addr<ParsingActor>>),
+    Real(Addr<ParserActor>),
     #[cfg(test)]
-    Mock(Vec<Addr<MockParsingActor>>),
+    Mock(Addr<MockParsingActor>),
     Empty,
 }
 
 #[derive(Clone)]
-pub struct ParsingActor {
+pub struct ParserActor {
+    flight_name: String,
     pub patterns: HashMap<String, Vec<Pattern>>, // flight_id → patterns
-    pub schema: HashMap<String, Schema>,         // service_id → schema
     pub registry_address: Addr<Registry>,
-    pub rhai_meter_actor: Addr<RhaiActor>
+    pub rhai_meter_actor: Option<Addr<RhaiActor>>, // optional for now
 }
 
-impl ParsingActor {
-    pub fn default(registry_address: Addr<Registry>) -> Self {
-        let rhai_meter_actor = RhaiActor::new(registry_address.clone()).start();
-        Self {
-            patterns: HashMap::new(),
-            schema: HashMap::new(),
-            registry_address,
-            rhai_meter_actor
-        }
-    }
-
-    pub fn new(team_id: String, registry_address: Addr<Registry>) -> Self {
-        let patterns = get_patterns_from_database(&team_id);
-        let schema = get_flight_and_schemas(&team_id);
-        let rhai_meter_actor = RhaiActor::new(registry_address.clone()).start();
-        Self {
-            patterns,
-            schema,
-            registry_address,
-            rhai_meter_actor
-        }
-    }
-}
-
-impl Actor for ParsingActor {
+impl Actor for ParserActor {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
+    fn started(&mut self, ctx: &mut Self::Context) {
+        let address = ctx.address();
         let registry_address = self.registry_address.clone();
-        let address = _ctx.address();
-        // let pool = settings_for_spawn.connection_pool().await;
-        registry_address.do_send(ParserActorAddr::Real(vec![address]));
-        trace!("ParsingActor started")
+        registry_address.do_send(ParserActorAddr::Real(ctx.address()));
+        trace!("Parser actor started");
+        self.rhai_meter_actor =
+            Some(RhaiActor::new(self.flight_name.clone(), self.registry_address.clone()).start());
+    }
+}
+
+impl ParserActor {
+    pub fn default(flight_name: String, registry_address: Addr<Registry>) -> Self {
+        Self {
+            flight_name,
+            patterns: HashMap::new(),
+            registry_address,
+            rhai_meter_actor: None,
+        }
+    }
+
+    pub fn new(flight_name: String, registry_address: Addr<Registry>) -> Self {
+        // let patterns = get_patterns_from_database(&flight_name);
+        let patterns = HashMap::new();
+        // let schema = get_flight_and_schemas(&flight_name);
+
+        Self {
+            flight_name,
+            patterns,
+            registry_address,
+            rhai_meter_actor: None,
+        }
+    }
+}
+
+#[derive(Message, Debug, Clone)]
+#[rtype(result = "Result<Value, ()>")]
+pub struct SubmitRegexRequest {
+    pub name: String,
+    pub flight_id: String,
+    pub log_group: String,
+    pub pattern: Vec<Pattern>,
+    pub try_parse: bool,
+}
+
+impl SubmitRegexRequest {
+    pub fn new(regex_request: &RegexHttpRequest) -> Self {
+        Self {
+            name: regex_request.name.clone(),
+            flight_id: regex_request.flight_id.clone(),
+            log_group: regex_request.log_group.clone(),
+            pattern: regex_request.pattern.clone(),
+            try_parse: true,
+        }
     }
 }
 
 // Handle regex rule registration
-impl Handler<RegexRequest> for ParsingActor {
-    type Result = Result<(), ValidationErrors>;
+impl Handler<SubmitRegexRequest> for ParserActor {
+    type Result = Result<Value, ()>;
 
-    fn handle(&mut self, msg: RegexRequest, _ctx: &mut Self::Context) -> Self::Result {
+    // TODO - compile the regex and save
+    fn handle(&mut self, msg: SubmitRegexRequest, _ctx: &mut Self::Context) -> Self::Result {
         println!("Received RegexRule in parser: {:?}", msg);
-        self.patterns.insert(msg.flight_id, msg.pattern);
-        Ok(())
+        self.patterns.insert(msg.flight_id.clone(), msg.pattern);
+        Ok(Value::String(format!("successfully submitted regex rule - {} for the flight stream - {}", &msg.name, &msg.flight_id)))
     }
 }
 
 use arrow_array::builder::BooleanBuilder;
-use futures_util::SinkExt;
+use dashmap::DashMap;
+use futures_util::{SinkExt, future};
 use log::error;
 
 // Handle incoming data for parsing
-impl Handler<RecordBatchWrapper> for ParsingActor {
+impl Handler<RecordBatchWrapper> for ParserActor {
     type Result = ();
+
+    // Tasks to be done
 
     fn handle(&mut self, record: RecordBatchWrapper, _ctx: &mut Self::Context) -> Self::Result {
         let _service_id = &record.metadata.service_id;
-        let parser = self.clone();
-        let registry = self.registry_address.clone();
+        let registry_address = self.registry_address.clone();
+        let registry = registry_address.clone();
         let rhai_meter = self.rhai_meter_actor.clone();
         let fut = async move {
-            let registry_address = parser.registry_address.clone();
+            // let registry_address = registry_address.clone();
             let Ok(result) = registry_address.send(FetchWalActor).await else {
                 error!("Failed to fetch WalActorAddr from Registry");
                 return;
@@ -106,27 +130,140 @@ impl Handler<RecordBatchWrapper> for ParsingActor {
             iceberg_actor.send(record.clone()).await.unwrap();
 
             match address {
-                WalActorAddr::Real(wal_actors) => {
+                WalActorWrapper::Real(wal_actors) => {
                     wal_actors.do_send(record.clone());
                 }
                 #[cfg(test)]
-                WalActorAddr::Mock(wal_actors) => {
+                WalActorWrapper::Mock(wal_actors) => {
                     wal_actors.do_send(record.clone());
                 }
                 _ => {}
             }
-            rhai_meter.do_send(record.clone());
+            rhai_meter.unwrap().do_send(record.clone());
         };
         fut.into_actor(self).spawn(_ctx);
     }
 }
 
+#[derive(Message, Clone, Debug)]
+#[rtype(result = "Result<Value, RegexError>")]
+pub struct TryParsingRegex {
+    pub name: String,
+    pub flight_name: String,
+    pub log_group: String,
+    pub pattern: Vec<Pattern>,
+    pub try_parsing: bool,
+}
+
+impl TryParsingRegex {
+    pub fn new(regex_request: &SubmitRegexRequest) -> Self {
+        Self {
+            name: regex_request.name.clone(),
+            flight_name: regex_request.flight_id.clone(),
+            log_group: regex_request.log_group.clone(),
+            pattern: regex_request.pattern.clone(),
+            try_parsing: true,
+        }
+    }
+}
+
+impl Handler<TryParsingRegex> for ParserActor {
+    type Result = ResponseActFuture<Self, Result<Value, RegexError>>;
+
+    fn handle(&mut self, msg: TryParsingRegex, _ctx: &mut Self::Context) -> Self::Result {
+        let try_parsing_regex = msg.try_parsing.clone();
+        let registry = self.registry_address.clone();
+        let flight_name = msg.flight_name.clone();
+
+        let futures = async move {
+            let iceberg_actor = registry
+                .send(FetchIcebergActor)
+                .await
+                .map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::Other, "Registry mailbox closed")
+                })
+                .unwrap()
+                .unwrap();
+
+            let mut futures = vec![];
+
+            if try_parsing_regex {
+                let future = iceberg_actor.get_buffer(flight_name);
+                futures.push(future);
+            }
+            let results: Vec<Result<Vec<RecordBatchWrapper>, core::fmt::Error>> =
+                future::join_all(futures).await;
+
+            // let values: Vec<Value> = results
+            //     .into_iter()
+            //     .filter_map(|outer| match outer {
+            //         Ok(inner) => {
+            //             Some(apply_regex(inner, msg).await)
+            //         },
+            //         Err(e) => {
+            //             eprintln!("outer error: {e}");
+            //             None
+            //         }
+            //     })
+            //     .collect();
+
+            let futures: Vec<_> = results
+                .into_iter()
+                .filter_map(|outer| match outer {
+                    Ok(inner) => {
+                        // returns a future
+                        Some(apply_regex(inner, msg.clone()))
+                    }
+                    Err(e) => {
+                        eprintln!("outer error: {e}");
+                        None
+                    }
+                })
+                .collect();
+
+            // Now await them all
+            let values: Vec<Value> = future::join_all(futures).await;
+
+            // let results: Vec<Result<Result<Value, RegexError>, MailboxError>> =
+            //     future::join_all(futures).await;
+
+            // let values: Vec<Value> = results
+            //     .into_iter()
+            //     .filter_map(|outer| match outer {
+            //         Ok(inner) => inner.ok(), // keep only Ok(Value)
+            //         Err(e) => {
+            //             eprintln!("outer error: {e}");
+            //             None
+            //         }
+            //     })
+            //     .collect();
+
+            let final_json = serde_json::json!({
+                "message": "Processed results from multiple parsers",
+                "results": values
+            });
+
+            Ok(final_json)
+        };
+
+        futures.into_actor(self).boxed_local()
+    }
+}
+
+use crate::api::http::messages::regex_messages::{Pattern, RegexHttpRequest};
 use crate::application::actors::iceberg::IcebergActorAddr::Real;
-use crate::application::actors::wal::WalActorAddr;
+use crate::application::actors::rhai_meter::RhaiActor;
+use crate::application::actors::wal::WalActorWrapper;
+use crate::core::error::exception::flight::FlightError;
+use crate::core::error::exception::iceberg_error::IcebergError;
+use crate::core::error::exception::regex::RegexError;
 use crate::platform::registry::{FetchIcebergActor, FetchWalActor, Registry};
 use regex::Regex;
+use serde_derive::{Deserialize, Serialize};
+use serde_json::Value;
 use tracing::trace;
-use crate::application::actors::rhai_meter::RhaiActor;
+use utoipa::ToSchema;
+use crate::core::utils::regex::apply_regex;
 
 #[allow(dead_code)]
 fn fast_regex_match(text_array: &StringArray, pattern: &str) -> Result<BooleanArray, String> {
@@ -159,7 +296,7 @@ fn get_flight_and_schemas(_team_id: &String) -> HashMap<String, Schema> {
 pub struct MockParsingActor {
     pub registry_address: Addr<Registry>,
     pub data: Vec<RecordBatchWrapper>,
-    pub regex: Vec<RegexRequest>,
+    pub regex: Vec<SubmitRegexRequest>,
 }
 
 #[cfg(test)]
@@ -177,12 +314,7 @@ impl MockParsingActor {
 impl Actor for MockParsingActor {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
-        let registry_address = self.registry_address.clone();
-        let address = _ctx.address();
-        registry_address.do_send(ParserActorAddr::Mock(vec![address.clone()]));
-        trace!("MockParsingActor started")
-    }
+    fn started(&mut self, _ctx: &mut Self::Context) {}
 }
 
 #[cfg(test)]
@@ -194,23 +326,13 @@ impl Handler<RecordBatchWrapper> for MockParsingActor {
 }
 
 #[cfg(test)]
-impl Handler<RegexRequest> for MockParsingActor {
-    type Result = Result<(), ValidationErrors>;
-    fn handle(&mut self, regex: RegexRequest, _: &mut Self::Context) -> Self::Result {
-        println!("Actor for parsing received RegexRule: {:?}", regex);
-        self.regex.push(regex);
-        Ok(())
-    }
-}
-
-#[cfg(test)]
 #[derive(Message, Clone)]
-#[rtype(result = "Vec<RegexRequest>")]
+#[rtype(result = "Vec<SubmitRegexRequest>")]
 pub struct DumpRegex;
 
 #[cfg(test)]
 impl Handler<DumpRegex> for MockParsingActor {
-    type Result = Vec<RegexRequest>;
+    type Result = Vec<SubmitRegexRequest>;
 
     fn handle(&mut self, _msg: DumpRegex, _ctx: &mut Self::Context) -> Self::Result {
         self.regex.clone()

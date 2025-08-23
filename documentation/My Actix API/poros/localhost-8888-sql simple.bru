@@ -12,8 +12,8 @@ post {
 
 body:json {
   {
-    "sql": "select  * from simple  limit 2000",
-    "stream_name": "simple"
+    "sql": "SELECT str_field_0, COUNT(*) AS total_records, SUM(int_field_0) AS sum_int_field_0, AVG(int_field_0) AS avg_int_field_0, MIN(float_field_0) AS min_float_field_0, MAX(float_field_0) AS max_float_field_0, SUM(decimal_field_0) AS sum_decimal_field_0, COUNT(CASE WHEN bool_field_0 THEN 1 ELSE NULL END) AS count_true_bool_field_0, MIN(ts_field_0) AS first_timestamp, MAX(ts_field_0) AS last_timestamp, SUM(struct_field_0.nested_int_0) AS sum_nested_int_0, AVG(struct_field_0.nested_int_0) AS avg_nested_int_0, COUNT(DISTINCT struct_field_0.nested_str_0) AS distinct_nested_str_0_count FROM log GROUP BY str_field_0 ORDER BY total_records DESC LIMIT 10",
+    "stream_name": "log"
   }
 }
 

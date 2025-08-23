@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use arrow_array::{Int64Array, StringArray, RecordBatch};
+use arrow_array::{Int64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
-use rhai::{Engine, Scope, Dynamic};
+use rhai::{Dynamic, Engine, Scope};
+use std::sync::Arc;
 
 #[test]
 fn arrow_rhai_example() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,7 +40,9 @@ fn arrow_rhai_example() -> Result<(), Box<dyn std::error::Error>> {
             }
             DataType::Utf8 => {
                 let arr = col.as_any().downcast_ref::<StringArray>().unwrap();
-                arr.iter().map(|v| Dynamic::from(v.unwrap_or("").to_string())).collect()
+                arr.iter()
+                    .map(|v| Dynamic::from(v.unwrap_or("").to_string()))
+                    .collect()
             }
             _ => unimplemented!("Only Int64 and Utf8 supported in this test"),
         };

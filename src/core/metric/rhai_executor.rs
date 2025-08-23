@@ -1,6 +1,7 @@
 use crate::application::actors::broadcast::RecordBatchWrapper;
 
 pub struct RhaiExecutor {
+    flight_name: String,
     record: Vec<RecordBatchWrapper>,
 }
 
@@ -8,9 +9,10 @@ pub struct RhaiExecutor {
 // has logic for executing the plans
 
 impl RhaiExecutor {
-    pub fn new() -> Self {
+    pub fn new(flight_name: String) -> Self {
         Self {
-            record: vec![]
+            flight_name,
+            record: vec![],
         }
     }
 
@@ -18,4 +20,3 @@ impl RhaiExecutor {
         self.record.push(buffer);
     }
 }
-

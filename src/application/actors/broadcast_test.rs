@@ -1,14 +1,14 @@
 #[cfg(test)]
 pub mod test {
-    use crate::api::http::regex::RegexRequest;
-    use crate::application::actors::broadcast::{BroadcastActor, BroadcastActorAddr};
+    use crate::api::http::regex::RegexHttpRequest;
+    use crate::application::actors::broadcast::{BroadcastActor, BroadcastActorWrapper};
     use crate::application::actors::db::{DbActorAddr, MockDbActor};
     use crate::application::actors::flight_registry::{
-        FlightRegistryActorAddr, MockFlightRegistry,
+        FlightRegistryActorWrapped, MockFlightRegistry,
     };
     use crate::application::actors::iceberg::{IcebergActorAddr, MockIcebergActor};
     use crate::application::actors::parser::{DumpRegex, MockParsingActor};
-    use crate::application::actors::wal::{MockWalActor, WalActorAddr};
+    use crate::application::actors::wal::{MockWalActor, WalActorWrapper};
     use crate::platform::registry::{
         FetchBroadcastActor, FetchParserActor, ParserActorAddr, Registry, RegistryBuilder,
     };
@@ -22,11 +22,11 @@ pub mod test {
     pub async fn test_broadcast() {
         let registry = Registry {
             db_actor_addr: DbActorAddr::Empty,
-            broadcast_actor_addr: BroadcastActorAddr::Empty,
-            flight_registry_actor_addr: FlightRegistryActorAddr::Empty,
+            broadcast_actor_addr: BroadcastActorWrapper::Empty,
+            flight_registry_actor_addr: FlightRegistryActorWrapped::Empty,
             iceberg_actor_addr: IcebergActorAddr::Empty,
             parser_actor_addr: ParserActorAddr::Empty,
-            wal_actor_addr: WalActorAddr::Empty,
+            wal_actor_addr: WalActorWrapper::Empty,
         };
 
         let registry_address = registry.start();
@@ -71,7 +71,7 @@ pub mod test {
                 .expect("TODO: panic message")
                 .expect("TODO: panic message");
 
-            let BroadcastActorAddr::Real(broadcast_actor2) = broadcast_actor else {
+            let BroadcastActorWrapper::Real(broadcast_actor2) = broadcast_actor else {
                 println!("Actor not found. Retrying...");
                 retries += 1;
                 tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
@@ -79,7 +79,7 @@ pub mod test {
             };
 
             let x = broadcast_actor2
-                .send(RegexRequest {
+                .send(RegexHttpRequest {
                     name: "".to_string(),
                     tenant: "".to_string(),
                     flight_id: "".to_string(),

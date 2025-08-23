@@ -1,2 +1,2 @@
-pub mod rhai;
 pub mod actors;
+pub mod rhai;

@@ -17,39 +17,40 @@ use crate::application::actors::iceberg::MockIcebergActor;
 #[cfg(test)]
 use crate::application::actors::parser::MockParsingActor;
 #[cfg(not(test))]
-use crate::application::actors::parser::ParsingActor;
+use crate::application::actors::parser::ParserActor;
 #[cfg(test)]
 use crate::application::actors::wal::MockWalActor;
 #[cfg(not(test))]
 use crate::application::actors::wal::WalActor;
 
 #[cfg(not(test))]
-use crate::application::actors::broadcast::BroadcastActorAddr;
+use crate::application::actors::broadcast::BroadcastActorWrapper;
 #[cfg(not(test))]
 use crate::application::actors::db::DbActorAddr;
 #[cfg(not(test))]
-use crate::application::actors::flight_registry::FlightRegistryActorAddr;
+use crate::application::actors::flight_registry::FlightRegistryActorWrapped;
 #[cfg(not(test))]
 use crate::application::actors::iceberg::IcebergActorAddr;
 #[cfg(not(test))]
 use crate::application::actors::parser::ParserActorAddr;
 #[cfg(not(test))]
-use crate::application::actors::wal::WalActorAddr;
+use crate::application::actors::wal::WalActorWrapper;
 use crate::config::yaml_reader::Settings;
 use crate::core::db::factory::database_factory::RepositoryProvider;
 use crate::platform::registry::{Registry, RegistryBuilder};
-use actix::Actor;
+use actix::{Actor, Addr};
 use std::sync::Arc;
 
 #[cfg(not(test))]
-pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) -> Arc<Registry> {
+pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) -> Addr<Registry> {
     let registry_actor = Registry {
         db_actor_addr: DbActorAddr::Empty,
-        parser_actor_addr: ParserActorAddr::Empty,
         iceberg_actor_addr: IcebergActorAddr::Empty,
-        wal_actor_addr: WalActorAddr::Empty,
-        flight_registry_actor_addr: FlightRegistryActorAddr::Empty,
-        broadcast_actor_addr: BroadcastActorAddr::Empty,
+        wal_actor_addr: WalActorWrapper::Empty,
+        flight_registry_actor_addr: FlightRegistryActorWrapped::Empty,
+        parser_actor_addr: None,
+        factory_actor: FactoryActorAddr::Empty,
+        broadcast_actor: None,
     };
 
     let registry_actor_addr = registry_actor.clone().start();
@@ -67,47 +68,47 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
     // WalActor uses the Addr of the *started* IcebergActor
     let wal_actor_instance = WalActor::new(registry_actor_addr.clone());
 
-    let parsing_actor: ParsingActor = ParsingActor::default(registry_actor_addr.clone());
-    let parsing_actor_vec = vec![parsing_actor]; // Renamed for clarity
-
     let flight_registry_actor = FlightRegistry::new(registry_actor_addr.clone()).await;
-    let broadcast_actor = BroadcastActor::new(registry_actor_addr.clone());
-    let broadcast_actor2 = broadcast_actor.clone();
+    let factory_actor = FactoryActor::new(registry_actor_addr.clone());
 
     let registry = RegistryBuilder::new()
         .db_actor(db_actor)
-        .parser_actor(parsing_actor_vec)
         .iceberg_actor(iceberg_actor_instance.unwrap()) // Pass the *instance* to the builder
         .flight_registry_actor(flight_registry_actor)
-        .broadcast_actor(broadcast_actor2)
         .wal_actor(wal_actor_instance) // Pass the WalActor instance
+        .factory_actor(factory_actor)
         .build();
 
-    Arc::new(registry)
+    registry_actor_addr
 }
 
 #[cfg(test)]
-use crate::application::actors::broadcast::BroadcastActorAddr;
+use crate::application::actors::broadcast::BroadcastActorWrapper;
 #[cfg(test)]
 use crate::application::actors::db::DbActorAddr;
+use crate::application::actors::factory_actor::{FactoryActor, FactoryActorAddr};
 #[cfg(test)]
-use crate::application::actors::flight_registry::FlightRegistryActorAddr;
+use crate::application::actors::flight_registry::FlightRegistryActorWrapped;
 #[cfg(test)]
 use crate::application::actors::iceberg::IcebergActorAddr;
 #[cfg(test)]
 use crate::application::actors::parser::ParserActorAddr;
 use crate::application::actors::rhai_meter::RhaiActorAddr;
 #[cfg(test)]
-use crate::application::actors::wal::WalActorAddr;
+use crate::application::actors::wal::WalActorWrapper;
 #[cfg(test)]
-pub async fn init_actors(_config: &Settings, _repos: Arc<dyn RepositoryProvider>) -> Arc<Registry> {
+pub async fn init_actors(
+    _config: &Settings,
+    _repos: Arc<dyn RepositoryProvider>,
+) -> Arc<Addr<Registry>> {
     let registry = Registry {
         db_actor_addr: DbActorAddr::Empty,
-        broadcast_actor_addr: BroadcastActorAddr::Empty,
-        flight_registry_actor_addr: FlightRegistryActorAddr::Empty,
+        flight_registry_actor_addr: FlightRegistryActorWrapped::Empty,
         iceberg_actor_addr: IcebergActorAddr::Empty,
-        parser_actor_addr: ParserActorAddr::Empty,
-        wal_actor_addr: WalActorAddr::Empty,
+        wal_actor_addr: WalActorWrapper::Empty,
+        parser_actor_addr: None,
+        factory_actor: FactoryActorAddr::Empty,
+        broadcast_actor: BroadcastActorWrapper::Empty,
     };
 
     let registry_address = registry.start();
@@ -133,16 +134,18 @@ pub async fn init_actors(_config: &Settings, _repos: Arc<dyn RepositoryProvider>
         regex: vec![],
     }];
 
+    let factory_actor = FactoryActor::new(registry_address.clone());
+
     let registry = RegistryBuilder::new()
-        .broadcast_actor_mock(broadcast_actor)
         .db_actor(db_actor)
         .flight_registry_actor(flight_registry_actor)
         .iceberg_actor(iceberg_actor)
-        .parser_actor(parser_actor)
         .wal_actor(wal_actor)
+        .factory_actor(factory_actor)
+        .broadcast_actor(broadcast_actor)
         .build();
 
-    Arc::new(registry)
+    Arc::new(registry.start())
 }
 
 #[cfg(test)]

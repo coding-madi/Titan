@@ -3,7 +3,7 @@ use std::io::{BufWriter, Write};
 use std::time::Duration;
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
-use actix_rt::spawn;
+use tokio::spawn;
 use tracing::info;
 
 use crate::application::actors::broadcast::RecordBatchWrapper;
@@ -18,7 +18,7 @@ use crate::platform::wal::writer::writer::write_wal_block;
 
 #[derive(Clone, Message)]
 #[rtype(result = "()")]
-pub enum WalActorAddr {
+pub enum WalActorWrapper {
     Real(Addr<WalActor>),
     #[cfg(test)]
     Mock(Addr<MockWalActor>),
@@ -83,7 +83,7 @@ impl Actor for WalActor {
         let registry_address = self.registry_address.clone();
         let address = ctx.address();
         spawn(async move {
-            registry_address.do_send(WalActorAddr::Real(address));
+            registry_address.do_send(WalActorWrapper::Real(address));
         });
         info!("WAL actor started");
     }

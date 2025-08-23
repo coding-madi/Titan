@@ -1,9 +1,9 @@
+use crate::application::actors::broadcast::RecordBatchWrapper;
 use crate::core::metric::rhai_engine::RhaiEngine;
 use crate::core::metric::rhai_executor::RhaiExecutor;
 use crate::core::metric::rhai_orchestrator::Orchestrator;
 use crate::platform::registry::Registry;
 use actix::{Actor, Addr, Context, Handler, Message};
-use crate::application::actors::broadcast::RecordBatchWrapper;
 
 #[derive(Message, Clone)]
 #[rtype(result = "()")]
@@ -11,24 +11,24 @@ pub enum RhaiActorAddr {
     Real(Vec<Addr<RhaiActor>>),
     #[cfg(test)]
     Mock(Vec<Addr<MockRhaiActor>>),
-    Empty
+    Empty,
 }
 
 pub struct RhaiActor {
     pub orchestrator: Orchestrator,
-    pub registry_address: Addr<Registry>
+    pub registry_address: Addr<Registry>,
 }
 
 impl RhaiActor {
-    pub fn new(registry_address: Addr<Registry>) -> Self {
+    pub fn new(flight_name: String, registry_address: Addr<Registry>) -> Self {
         // create a new executor
         let engine = RhaiEngine::new();
 
-        let executor = RhaiExecutor::new();
+        let executor = RhaiExecutor::new(flight_name);
         let orchestrator = Orchestrator::new(engine, executor);
         Self {
             orchestrator,
-            registry_address
+            registry_address,
         }
     }
 }
@@ -36,8 +36,7 @@ impl RhaiActor {
 impl Actor for RhaiActor {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
-    }
+    fn started(&mut self, ctx: &mut Self::Context) {}
 }
 
 impl Handler<RecordBatchWrapper> for RhaiActor {
@@ -48,7 +47,8 @@ impl Handler<RecordBatchWrapper> for RhaiActor {
     }
 }
 
-
 pub struct MockRhaiActor {}
 
-impl Actor for MockRhaiActor { type Context = Context<Self>; }
+impl Actor for MockRhaiActor {
+    type Context = Context<Self>;
+}

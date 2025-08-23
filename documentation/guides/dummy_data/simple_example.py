@@ -213,7 +213,7 @@ async def main():
 
     batch_descriptor = flight.FlightDescriptor.for_path("simple")
     rows_per_batch = 101072
-    num_batches = 50
+    num_batches = 200
 
     logging.info(f"\n--- Starting async benchmark for sending {num_batches} batches ---")
 

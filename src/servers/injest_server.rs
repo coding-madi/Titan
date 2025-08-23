@@ -1,7 +1,9 @@
+use actix::{Actor, Addr};
 use actix_web::web::ServiceConfig;
 use arrow_flight::flight_service_server::FlightServiceServer;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio::{
     signal,
     sync::oneshot::{self, Sender},
@@ -10,7 +12,7 @@ use tonic::transport::Server;
 use tracing::info;
 
 pub struct InjestServer {
-    pub actor_registry: Arc<Registry>,
+    pub actor_registry: Addr<Registry>,
     pub repos: Arc<dyn RepositoryProvider + Send + Sync>,
     pub _shutdown_handler: Option<Sender<()>>, // Hold the sender, else the sender is dropped and the receiver receives a None value and stops the server. // TODO: add the postgres database connection pool
 }
@@ -18,7 +20,7 @@ pub struct InjestServer {
 impl InjestServer {
     pub fn new(
         &self,
-        actor_registry: Arc<Registry>,
+        actor_registry: Addr<Registry>,
         repos: Arc<dyn RepositoryProvider + Send + Sync>,
         _shutdown_handler: Option<Sender<()>>,
     ) -> Self {
@@ -76,12 +78,17 @@ impl PorosServer for InjestServer {
     {
         let flight_address = get_flight_server_endpoint(config);
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
         let log_flight_server = LogFlightServer::new(self.actor_registry.clone());
 
         let server = Server::builder()
             .max_concurrent_streams(128) // Optional
-            .accept_http1(false)
-            .add_service(FlightServiceServer::new(log_flight_server))
+            .max_frame_size(Some(16_777_215)) // maximum allowed by h2      // max HTTP2 frame
+            .add_service(
+                FlightServiceServer::new(log_flight_server)
+                    .max_decoding_message_size((128 * 1024 * 1024))
+                    .max_encoding_message_size((128 * 1024 * 1024)),
+            )
             .serve_with_shutdown(flight_address, Self::shutdown_handler(shutdown_rx));
 
         // --- NEW: Spawn a task to listen for Ctrl+C ---
@@ -138,6 +145,7 @@ use crate::platform::registry::Registry;
 use crate::servers::server::PorosServer;
 use tokio::sync::oneshot::Receiver;
 use tracing::log::error;
+use tracing_subscriber::registry;
 
 impl InjestServer {
     async fn shutdown_handler(shutdown_rx: Receiver<()>) {

@@ -1,4 +1,4 @@
-use rhai::{Engine};
+use rhai::Engine;
 
 #[derive(Debug, Clone)]
 pub struct MyConfig {

@@ -50,7 +50,7 @@ impl BufferManager {
     // Will continuously drain the data from a channel into the memory buffer
     fn spawn_consumer(&self, mut rx: Receiver<RecordBatchWrapper>) {
         let buffer = self.buffer.clone();
-        actix_rt::spawn(async move {
+        tokio::spawn(async move {
             while let Some(el) = rx.recv().await {
                 let flight = el.metadata.flight.clone();
                 buffer

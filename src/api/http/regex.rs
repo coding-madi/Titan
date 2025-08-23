@@ -1,13 +1,25 @@
+use crate::api::http::messages::regex_messages::{Pattern, RegexHttpRequest, RegexPattern};
+use crate::application::actors::broadcast::BroadcastActorWrapper;
 use crate::application::actors::flight_registry::{
-    CheckFlight, FlightRegistryActorAddr, ListFlights,
+    CheckFlight, FlightRegistryActorWrapped, ListFlights,
 };
-use crate::platform::registry::Registry;
+use crate::application::actors::parser::{SubmitRegexRequest, TryParsingRegex};
+use crate::core::error::exception::actor_errors::ErrorType;
+use crate::core::error::exception::regex::RegexError;
+use crate::core::utils::flight::validate_if_flight_exists;
+use crate::core::utils::regex::{is_valid_regex, validate_patterns};
+use crate::platform::registry::{
+    FetchBroadcastActor, FetchFlightRegistryActor, FetchParserActor, Registry,
+};
 use actix::dev::ToEnvelope;
 use actix::{Actor, Addr, Handler, MailboxError, Message};
 use actix_web::web::{Data, Path};
 use actix_web::{HttpResponse, Resource, Responder, web};
+use futures_util::SinkExt;
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
+/// ========== Models ==========
+use serde_json::Value;
 use serde_json::json;
 use std::collections::HashSet;
 use std::fmt::{Debug, Display, Formatter};
@@ -16,86 +28,16 @@ use tracing::{info, warn};
 use utoipa::ToSchema;
 use validator::{Validate, ValidationError, ValidationErrors};
 
-/// ========== Models ==========
-
-#[derive(Debug, Serialize, Deserialize, Validate, Clone, ToSchema, Message)]
-#[rtype(result = "Result<(), ValidationErrors>")]
-pub struct RegexRequest {
-    #[validate(length(min = 3, message = "Name must be greater than 3 chars"))]
-    pub name: String,
-    #[schema(example = "team-123")]
-    pub tenant: String,
-    #[schema(example = "flight-abc")]
-    pub flight_id: String,
-    pub log_group: String,
-    #[validate(custom(function = "validate_regex_pattern"))]
-    pub pattern: Vec<Pattern>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-#[serde(tag = "type", content = "value")]
-pub enum Pattern {
-    RegexPattern(RegexPattern),
-    GrokPattern(GrokPattern),
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct RegexPattern {
-    pub override_field: Option<String>,
-    pub field: String,
-    #[schema(example = ".*ERROR.*")]
-    pub pattern_string: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct GrokPattern {
-    pub override_field: Option<String>,
-    pub field: String,
-    #[schema(example = ".*ERROR.*")]
-    pub pattern_string: String,
-}
-
 /// ========== Errors ==========
 
-#[derive(Debug)]
-pub enum ErrorType {
-    ActorError(MailboxError),
-}
-
-impl Display for ErrorType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ErrorType::ActorError(e) => write!(f, "Actor error: {}", e),
-        }
-    }
-}
-
 impl std::error::Error for ErrorType {}
-
-pub fn validate_regex_pattern(patterns: &Vec<Pattern>) -> Result<(), ValidationError> {
-    for pattern in patterns {
-        match pattern {
-            Pattern::RegexPattern(rp) => {
-                if !is_valid_regex(rp) {
-                    return Err(ValidationError::new("invalid_regex"));
-                }
-            }
-            _ => return Err(ValidationError::new("unsupported_pattern_type")),
-        }
-    }
-    Ok(())
-}
-
-pub fn is_valid_regex(regex: &RegexPattern) -> bool {
-    Regex::new(&regex.pattern_string).is_ok()
-}
 
 /// ========== Handlers ==========
 
 #[utoipa::path(
     post,
     path = "/pattern",
-    request_body(content = RegexRequest, description = "Submit a new regex pattern for ingestion"),
+    request_body(content = RegexHttpRequest, description = "Submit a new regex pattern for ingestion"),
     responses(
         (status = 200, description = "Pattern accepted and dispatched"),
         (status = 400, description = "Validation or JSON error"),
@@ -108,55 +50,75 @@ pub fn submit_new_pattern_factory() -> Resource {
     web::resource("/pattern").route(web::post().to(submit_new_pattern))
 }
 
+// TODO -
+// 1. Validate regex pattern
+// 2. extract flight name from request
+// 3. Fetch registry
+// Validate if flight exists
+// Fetch broadcast registry actor by flight name
+// Send regex to the actor
+// return the response
 pub async fn submit_new_pattern(
-    data: Data<Arc<Registry>>,
-    req: web::Json<RegexRequest>,
+    registry_actor: Data<Arc<Addr<Registry>>>,
+    req: web::Json<RegexHttpRequest>,
 ) -> impl Responder {
-    if let Err(validation_errors) = validate_regex_pattern(&req.pattern) {
+    // 1. Validate regex pattern
+    if let Err(validation_errors) = validate_patterns(&req.pattern) {
         return HttpResponse::BadRequest().json(validation_errors);
     }
 
+    // 2. extract flight name from request
     let regex_request = req.into_inner();
-    let team_id = regex_request.tenant.clone();
     let flight = regex_request.flight_id.clone();
-    let flight_registry_actor = data.flight_registry_actor_addr.clone();
 
-    match flight_registry_actor {
-        FlightRegistryActorAddr::Real(flight_registry) => {
-            match check_if_flight_exists(flight_registry.clone(), team_id, flight.clone()).await {
-                Ok(true) => {
-                    // flight_registry.do_send(regex_request.clone());
-                    HttpResponse::Ok().json(format!("Regex submitted for {}", flight))
-                }
-                Ok(false) => HttpResponse::Conflict().json(format!(
-                    "Regex could not be submitted, Flight {} does not exist",
-                    flight
-                )),
-                Err(e) => {
-                    HttpResponse::NotFound().json(format!("Flight {} not found - {}", flight, e))
-                }
-            }
+    // 3. Fetch registry
+    let registry = registry_actor.get_ref().as_ref().clone();
+    // Validate of flight exists
+    if let Ok(is_flight_exists) = validate_if_flight_exists(&flight, registry.clone()).await {
+        if ! is_flight_exists {
+            HttpResponse::NotFound().json(format!("Flight {} does not exist", flight))
+        } else {
+            // Send data to broadcast actor for handling
+            submit_new_pattern_to_broadcast_actor(registry, &regex_request, flight).await
         }
-        _ => HttpResponse::InternalServerError().json("Internal server error"),
+    } else {
+        HttpResponse::InternalServerError().json("Internal server error".to_string())
+    }
+}
+
+async fn submit_new_pattern_to_broadcast_actor(
+    registry: Addr<Registry>,
+    regex_request: &RegexHttpRequest,
+    flight: String,
+) -> HttpResponse {
+    if let Ok(mut broadcast_actor_wrapper) = registry
+        .send(FetchBroadcastActor {
+            flight_name: flight.to_string(),
+        })
+        .await
+        .unwrap()
+    {
+        match broadcast_actor_wrapper
+            .regex_request(SubmitRegexRequest::new(regex_request))
+            .await
+        {
+            Ok(response) => HttpResponse::Ok().json(response),
+            Err(e) => HttpResponse::NotFound().json(format!("Internal server error - {}", e)),
+        }
+    } else {
+        HttpResponse::InternalServerError().json("Internal server error".to_string())
     }
 }
 
 async fn check_if_flight_exists<F>(
     flight_registry_actor: Addr<F>,
-    team_id: String,
     flight: String,
-) -> Result<bool, std::io::Error>
+) -> Result<bool, MailboxError>
 where
     F: Actor + Handler<CheckFlight>,
     <F as Actor>::Context: ToEnvelope<F, CheckFlight>,
 {
-    flight_registry_actor
-        .send(CheckFlight { team_id, flight })
-        .await
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Actor error: {}", e)))?
-        .map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Handler error: {}", e))
-        })
+    flight_registry_actor.send(CheckFlight { flight }).await
 }
 
 /// ========== List Flights ==========
@@ -180,12 +142,12 @@ pub struct FlightsList {
     flights: HashSet<String>,
 }
 
-pub async fn fetch_flights(path: Path<String>, data: Data<Arc<Registry>>) -> impl Responder {
+pub async fn fetch_flights(path: Path<String>, data: Data<Arc<Addr<Registry>>>) -> impl Responder {
     let team_id = path.into_inner();
-    let actor = data.flight_registry_actor_addr.clone();
+    let actor = data.send(FetchFlightRegistryActor).await.unwrap().unwrap();
 
     match actor {
-        FlightRegistryActorAddr::Real(flight_registry) => {
+        FlightRegistryActorWrapped::Real(flight_registry) => {
             let x = flight_registry
                 .send(ListFlights {
                     team_id: team_id.clone(),

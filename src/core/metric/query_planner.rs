@@ -70,7 +70,6 @@ impl QueryPlan {
 }
 
 impl QueryPlan {
-
     pub fn filter(mut self, f: Filter) -> Self {
         self.filters.push(f);
         self
@@ -92,11 +91,19 @@ impl QueryPlan {
     }
 
     pub fn eq_int(col: &str, val: i64) -> Filter {
-        Filter { column: col.into(), op: Operator::Eq, value: FilterValue::Int(val) }
+        Filter {
+            column: col.into(),
+            op: Operator::Eq,
+            value: FilterValue::Int(val),
+        }
     }
 
     pub fn gt_int(col: &str, val: i64) -> Filter {
-        Filter { column: col.into(), op: Operator::Gt, value: FilterValue::Int(val) }
+        Filter {
+            column: col.into(),
+            op: Operator::Gt,
+            value: FilterValue::Int(val),
+        }
     }
 }
 
@@ -146,7 +153,5 @@ mod tests {
         }
 
         println!("{:#?}", plans);
-
     }
-
 }

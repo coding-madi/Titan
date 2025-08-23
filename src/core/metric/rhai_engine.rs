@@ -1,5 +1,5 @@
-use rhai::Engine;
 use crate::core::metric::query_planner::{Filter, QueryPlan};
+use rhai::Engine;
 
 fn execution_engine() -> Engine {
     let mut engine = Engine::new();
@@ -24,7 +24,6 @@ pub struct RhaiEngine {
 
 impl RhaiEngine {
     pub fn new() -> Self {
-
         Self {
             engine: execution_engine(),
         }

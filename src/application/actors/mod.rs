@@ -7,6 +7,7 @@ pub mod parser;
 pub mod wal;
 
 mod broadcast_test;
+pub mod factory_actor;
 pub mod flight_registry;
-pub mod wal_test;
 pub mod rhai_meter;
+pub mod wal_test;

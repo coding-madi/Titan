@@ -3,7 +3,7 @@ use crate::core::catalog::iceberg_ddl::{create_namespace, create_table};
 use crate::core::error::exception::iceberg_error::IcebergError;
 use crate::core::utils::arrow::concat_batches_grouped;
 use crate::core::utils::iceberg::{convert_arrow_to_iceberg_schema, make_table_ident};
-use arrow_array::RecordBatch;
+use arrow_array::{Int64Array, RecordBatch, StringArray};
 use iceberg::spec::DataFile;
 use iceberg::table::Table;
 use iceberg::transaction::Transaction;
@@ -15,11 +15,12 @@ use iceberg::writer::file_writer::location_generator::{
 use iceberg::writer::{IcebergWriter, IcebergWriterBuilder};
 use iceberg::{Catalog, NamespaceIdent, TableCreation, TableIdent};
 use iceberg_catalog_rest::RestCatalog;
+use log::warn;
 use parquet::file::properties::WriterProperties;
 use std::collections::HashMap;
+use std::error::Error;
 use std::ops::Deref;
 use std::sync::Arc;
-use log::warn;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -81,9 +82,7 @@ pub async fn flush_buffer(
     catalog: Arc<Mutex<RestCatalog>>,
     namespace: String,
 ) -> Result<(), IcebergError> {
-    // Drain the data from memory
     let all_batches = buffer_manager.drain_all();
-    // Group and concatenate for flushing
     let grouped = concat_batches_grouped(&all_batches).await.unwrap();
 
     if let Err(ns_error) = create_namespace(catalog.clone(), &namespace).await {
@@ -91,47 +90,74 @@ pub async fn flush_buffer(
         return Err(IcebergError::NamespaceError(ns_error.to_string()));
     }
 
+    // Limit concurrency to avoid deadlocks
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+
     let tasks: Vec<_> = grouped
         .into_iter()
         .map(|(flight, batch)| {
             let catalog_clone = catalog.clone();
             let namespace_clone = namespace.clone();
+            let semaphore = semaphore.clone();
             tokio::spawn(async move {
-                let table_ident = make_table_ident(flight.clone())?;
+                let _permit = semaphore.acquire_owned().await.unwrap();
 
-                // Load table, if it fails create the table and try loading
+                let table_ident = match make_table_ident(flight.clone()) {
+                    Ok(t) => t,
+                    Err(e) => return Err(IcebergError::TableError(e.to_string())),
+                };
+
                 let table = match load_table(catalog_clone.clone(), &table_ident).await {
                     Ok(t) => t,
                     Err(_e) => {
-                        warn!("Error in loading table - Attempting to re-create table - {}", _e.to_string());
-                        let arrow_schema = batch.schema().deref().clone();
-                        let _ = create_table(
+                        warn!("Error loading table, attempting to create: {:?}", _e);
+                        let schema = batch.schema().deref().clone();
+                        let x = match create_table(
                             catalog_clone.clone(),
-                            &*namespace_clone,
-                            &*flight,
-                            Arc::new(arrow_schema),
+                            &namespace_clone,
+                            &flight,
+                            Arc::new(schema),
                         )
-                        .await?;
-                        // Table missing → create it
+                        .await
+                        {
+                            Ok(t) => t,
+                            Err(e) => {
+                                error!("Error creating table: {:?}", e);
+                                println!("Error creating table: {:?}", e);
+                                return Err(IcebergError::TableError(e.to_string()));
+                            }
+                        };
+
                         load_table(catalog_clone.clone(), &table_ident).await?
                     }
                 };
-                let writer_builder = create_parquet_writer(&table)?;
-                let data_files = tokio::task::spawn_blocking(move || {
-                    futures::executor::block_on(write_and_close(writer_builder, batch))
-                })
-                .await
-                .unwrap();
 
-                commit_transaction(&table, data_files.unwrap(), catalog_clone)
-                    .await
-                    .map_err(|e| format!("Failed to commit transaction: {:?}", e))?;
+                let writer_builder = create_parquet_writer(&table)?;
+                match write_and_close(writer_builder, batch).await {
+                    Ok(data_files) => {
+                        commit_transaction(&table, data_files, catalog_clone).await?;
+                    }
+                    Err(IcebergError::StorageError(e)) => {
+                        error!("Error writing data: {}", e);
+                        return Err(IcebergError::StorageError(e));
+                    }
+                    Err(e) => {
+                        error!("Other error while writing: {}", e);
+                        return Err(e);
+                    }
+                }
+
                 Ok::<(), IcebergError>(())
             })
         })
         .collect();
 
-    futures::future::try_join_all(tasks).await.unwrap();
+    // Properly await all results
+    let results = futures::future::try_join_all(tasks).await.unwrap();
+    for r in results {
+        r?; // propagate individual task errors
+    }
+
     Ok(())
 }
 
@@ -144,7 +170,38 @@ pub async fn write_and_close(
     let mut writer = data_file_writer_builder.build().await.map_err(|e| {
         IcebergError::StorageError(format!("Failed to build DataFileWriter: {:?}", e))
     })?;
+    println!("Arrow RecordBatch schema: {:?}", batch.schema());
+    println!("Number of columns: {}", batch.num_columns());
+    let schema = batch.schema();
+    for i in 0..batch.num_columns() {
+        let field = schema.field(i);
+        let array = batch.column(i);
 
+        println!(
+            "Column {}: Name: {}, Type: {}, Nullable: {}",
+            i,
+            field.name(),
+            field.data_type(),
+            field.is_nullable()
+        );
+
+        // Get a reference to the array data
+        let array_data = array.as_any();
+
+        // Check the data type and print values accordingly
+        if let Some(int64_array) = array_data.downcast_ref::<Int64Array>() {
+            println!(
+                "  Values: {:?}",
+                &int64_array.values()[0..std::cmp::min(10, int64_array.len())]
+            );
+        } else if let Some(str_array) = array_data.downcast_ref::<StringArray>() {
+            println!("  Values: {:?}", &str_array.value(0));
+            // You can print more values similarly
+        } else {
+            // Handle other data types as needed
+            println!("  Skipping print for this data type.");
+        }
+    }
     writer
         .write((*batch).clone())
         .await

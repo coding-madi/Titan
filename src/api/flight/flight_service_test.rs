@@ -2,11 +2,11 @@
 mod test {
 
     use crate::api::flight::flight_service::LogFlightServer;
-    use crate::application::actors::broadcast::BroadcastActorAddr;
+    use crate::application::actors::broadcast::BroadcastActorWrapper;
     use crate::application::actors::db::DbActorAddr;
-    use crate::application::actors::flight_registry::FlightRegistryActorAddr;
+    use crate::application::actors::flight_registry::FlightRegistryActorWrapped;
     use crate::application::actors::iceberg::IcebergActorAddr;
-    use crate::application::actors::wal::WalActorAddr;
+    use crate::application::actors::wal::WalActorWrapper;
     use crate::platform::registry::{ParserActorAddr, Registry};
     use actix::Actor;
     use arrow_array::{Int32Array, RecordBatch, StringArray};
@@ -73,11 +73,11 @@ mod test {
     async fn test_flight_service() {
         let registry = Registry {
             db_actor_addr: DbActorAddr::Empty,
-            broadcast_actor_addr: BroadcastActorAddr::Empty,
-            flight_registry_actor_addr: FlightRegistryActorAddr::Empty,
+            broadcast_actor_addr: BroadcastActorWrapper::Empty,
+            flight_registry_actor_addr: FlightRegistryActorWrapped::Empty,
             iceberg_actor_addr: IcebergActorAddr::Empty,
             parser_actor_addr: ParserActorAddr::Empty,
-            wal_actor_addr: WalActorAddr::Empty,
+            wal_actor_addr: WalActorWrapper::Empty,
         };
 
         let _registry_addr = registry.clone().start();

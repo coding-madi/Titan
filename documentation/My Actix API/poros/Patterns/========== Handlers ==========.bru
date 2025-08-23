@@ -12,10 +12,26 @@ post {
 
 body:json {
   {
-    "flight_id": "",
-    "log_group": "",
+    "flight_id": "log",
+    "log_group": "str_field_1",
     "name": "",
-    "pattern": [],
-    "tenant": ""
+    "pattern": [
+      {
+        "type": "RegexPattern",
+        "value": {
+          "field": "str_field_1",
+          "pattern_string": "^(?P<first>.{2}).*(?P<last>.{2})$"
+        }
+      },
+      {
+        "type": "RegexPattern",
+        "value": {
+          "field": "str_field_2",
+          "pattern_string": "^(?P<first>.{2}).*(?P<last2>.{2})$"
+        }
+      }
+    ],
+    "tenant": "",
+    "try_parse": true
   }
 }

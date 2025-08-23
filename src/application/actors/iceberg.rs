@@ -38,6 +38,25 @@ pub enum IcebergActorAddr {
     Empty,
 }
 
+impl IcebergActorAddr {
+    pub async fn get_buffer(
+        &self,
+        flight_name: String,
+    ) -> Result<Vec<RecordBatchWrapper>, std::fmt::Error> {
+        match self {
+            IcebergActorAddr::Real(iceberg_actor) => iceberg_actor
+                .send(GetBuffer {
+                    stream: flight_name,
+                })
+                .await
+                .unwrap(),
+            _ => {
+                panic!("Mock not implemented")
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct IcebergActor {
     catalog: Arc<Mutex<RestCatalog>>,
@@ -52,7 +71,7 @@ impl Actor for IcebergActor {
     fn started(&mut self, ctx: &mut Self::Context) {
         let address = ctx.address();
         let registry_address = self.registry_address.clone();
-        actix_rt::spawn(async move {
+        tokio::spawn(async move {
             registry_address.do_send(IcebergActorAddr::Real(address));
         });
         println!("Started IcebergActor");
@@ -67,7 +86,7 @@ impl Handler<RecordBatchWrapper> for IcebergActor {
     fn handle(&mut self, msg: RecordBatchWrapper, _ctx: &mut Self::Context) {
         let buffer_manager = self.buffer_manager.clone(); // Arc<BufferManager>
 
-        actix_rt::spawn(async move {
+        tokio::spawn(async move {
             let flight = msg.metadata.flight.clone();
 
             // Get or create a channel for this flight
@@ -94,7 +113,7 @@ impl Handler<FlushInstruction> for IcebergActor {
         let catalog = self.catalog.clone();
         let namespace = self.namespace.clone();
         // Fire-and-forget async flush
-        actix_rt::spawn(async move {
+        tokio::spawn(async move {
             if let Err(e) =
                 flush_buffer(buffer_manager.clone(), catalog.clone(), namespace.clone()).await
             {
@@ -112,7 +131,7 @@ impl IcebergActor {
         object_storage_properties: Storage,
         namespace: String,
     ) -> JoinHandle<IcebergActor> {
-        actix_rt::spawn(async move {
+        tokio::spawn(async move {
             let catalog = Arc::new(Mutex::new(
                 create_rest_catalog(object_storage_properties).await,
             ));
@@ -140,7 +159,7 @@ impl Handler<CreateTable> for IcebergActor {
     fn handle(&mut self, msg: CreateTable, _ctx: &mut Self::Context) -> Self::Result {
         let catalog = self.catalog.clone();
         let namespace = self.namespace.clone();
-        actix_rt::spawn(async move {
+        tokio::spawn(async move {
             let namespace_ident = NamespaceIdent::from_vec(vec![namespace]).unwrap();
             let namespace_exists = {
                 let guard = catalog.lock().await;
