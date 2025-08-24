@@ -3,12 +3,13 @@ use crate::config::flight_conf::FlightConf;
 use config::{Config, Environment, File};
 use serde_derive::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Settings {
     pub database: DatabaseConf,
     pub server: ServerType,
     pub flight: FlightConf,
     pub storage: Storage,
+    pub parser: String
 }
 
 #[derive(Deserialize, Clone)]
@@ -38,7 +39,7 @@ pub struct GCSProperties {
     pub path_style_access: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub enum ServerType {
     QUERY,
     INJEST,

@@ -1,10 +1,11 @@
 use crate::core::error::exception::regex::RegexError;
+use crate::core::utils::regex::validate_regex_pattern;
 use actix::Message;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 use validator::Validate;
-use crate::core::utils::regex::validate_regex_pattern;
+use crate::application::actors::parser::TryParsingRegex;
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone, ToSchema, Message)]
 #[rtype(result = "Result<Value, RegexError>")]
@@ -17,6 +18,18 @@ pub struct RegexHttpRequest {
     #[validate(custom(function = "validate_regex_pattern"))]
     pub pattern: Vec<Pattern>,
     pub try_parse: bool,
+}
+
+impl From<TryParsingRegex> for RegexHttpRequest {
+    fn from(value: TryParsingRegex) -> Self {
+        Self {
+            name: value.name,
+            flight_id: value.flight_name,
+            log_group: value.log_group,
+            pattern: value.pattern,
+            try_parse: value.try_parsing,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]

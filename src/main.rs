@@ -34,7 +34,7 @@ async fn main() -> std::io::Result<()> {
 
     // TODO: implement log rotation
     let file_writer = FileWriter::new("poros.log");
-    let subscriber = get_subscribers("poros", "DEBUG", file_writer);
+    let subscriber = get_subscribers("poros", "INFO", file_writer);
     init_subscriber(subscriber);
     let config = read_configuration();
 

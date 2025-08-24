@@ -2,6 +2,7 @@ use actix::{Actor, Addr};
 use actix_web::web::ServiceConfig;
 use arrow_flight::flight_service_server::FlightServiceServer;
 use std::net::SocketAddr;
+use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::{
@@ -79,7 +80,10 @@ impl PorosServer for InjestServer {
         let flight_address = get_flight_server_endpoint(config);
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
-        let log_flight_server = LogFlightServer::new(self.actor_registry.clone());
+        let injest_service = InjestService::new(self.actor_registry.clone(), Arc::new(config.to_owned()));
+
+        // Injest the service layer into the controller
+        let log_flight_server = LogFlightServer::new(injest_service);
 
         let server = Server::builder()
             .max_concurrent_streams(128) // Optional
@@ -146,6 +150,7 @@ use crate::servers::server::PorosServer;
 use tokio::sync::oneshot::Receiver;
 use tracing::log::error;
 use tracing_subscriber::registry;
+use crate::application::service::injest_service::InjestService;
 
 impl InjestServer {
     async fn shutdown_handler(shutdown_rx: Receiver<()>) {

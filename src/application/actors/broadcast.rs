@@ -4,7 +4,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::io::{ErrorKind};
+use std::io::ErrorKind;
 use tracing::{error, trace};
 
 #[derive(Clone, Message)]
@@ -27,7 +27,11 @@ impl BroadcastActorWrapper {
                     let broadcast_actor = broadcast_actors
                         .get(regex_request.flight_id.as_str())
                         .unwrap();
-                    Ok(broadcast_actor.send(TryParsingRegex::new(&regex_request)).await.unwrap().unwrap())
+                    if regex_request.try_parse {
+                        Ok(broadcast_actor.send(TryParsingRegex::new(&regex_request)).await.unwrap().unwrap())
+                    } else {
+                        Ok(broadcast_actor.send(regex_request).await.unwrap().unwrap())
+                    }
                 } else {
                     Err(RegexError::RegexIncorrect(
                         "Flight not found in registry".to_string(),
@@ -37,7 +41,7 @@ impl BroadcastActorWrapper {
             #[cfg(test)]
             BroadcastActorWrapper::Mock(addr) => {
                 todo!()
-            },
+            }
             _ => {
                 panic!("Invalid broadcast actor address")
             }
@@ -61,7 +65,7 @@ impl BroadcastActorWrapper {
             #[cfg(test)]
             BroadcastActorWrapper::Mock(addr) => {
                 todo!()
-            },
+            }
             _ => {}
         }
     }
@@ -123,7 +127,7 @@ impl Handler<SubmitRegexRequest> for BroadcastActor {
             for parser_actor in parsers {
                 match parser_actor {
                     ParserActorAddr::Real(parser) => {
-                        let f = parser.send(regex_request.clone());;
+                        let f = parser.send(regex_request.clone());
                         futures.push(f);
                     }
                     #[cfg(test)]
@@ -147,7 +151,6 @@ impl Handler<SubmitRegexRequest> for BroadcastActor {
                     }
                 })
                 .collect();
-
 
             let final_json = serde_json::json!({
                 "message": "Processed results from multiple parsers",
@@ -174,17 +177,15 @@ impl Handler<TryParsingRegex> for BroadcastActor {
         let async_task = async move {
             let mut futures = Vec::new();
             match parsers {
-                Some(parser_actor) => {
-                    match parser_actor {
-                        ParserActorAddr::Real(parser) => {
-                            let f = parser.send(msg.clone());;
-                            futures.push(f);
-                        }
-                        #[cfg(test)]
-                        ParserActorAddr::Mock(parser) => {}
-                        _ => {}
+                Some(parser_actor) => match parser_actor {
+                    ParserActorAddr::Real(parser) => {
+                        let f = parser.send(msg.clone());
+                        futures.push(f);
                     }
-                }
+                    #[cfg(test)]
+                    ParserActorAddr::Mock(parser) => {}
+                    _ => {}
+                },
                 _ => {}
             }
             let results: Vec<Result<Result<Value, RegexError>, MailboxError>> =
@@ -200,7 +201,6 @@ impl Handler<TryParsingRegex> for BroadcastActor {
                     }
                 })
                 .collect();
-
 
             let final_json = serde_json::json!({
                 "message": "Processed results from multiple parsers",
@@ -304,6 +304,16 @@ impl Actor for MockBroadcastActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {}
+}
+
+#[cfg(test)]
+impl Handler<RegexHttpRequest> for MockBroadcastActor {
+    type Result = Result<Value, RegexError>;
+
+    fn handle(&mut self, _msg: RegexHttpRequest, _ctx: &mut Self::Context) -> Self::Result {
+        self.regex_request.push(_msg.clone());
+        Ok(Value::String("Regex submitted successfully".to_string()))
+    }
 }
 
 #[cfg(test)]

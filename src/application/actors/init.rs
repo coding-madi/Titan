@@ -134,7 +134,7 @@ pub async fn init_actors(
         regex: vec![],
     }];
 
-    let factory_actor = FactoryActor::new(registry_address.clone());
+    let factory_actor = MockFactoryActor::new(registry_address.clone());
 
     let registry = RegistryBuilder::new()
         .db_actor(db_actor)
@@ -142,7 +142,6 @@ pub async fn init_actors(
         .iceberg_actor(iceberg_actor)
         .wal_actor(wal_actor)
         .factory_actor(factory_actor)
-        .broadcast_actor(broadcast_actor)
         .build();
 
     Arc::new(registry.start())
@@ -198,6 +197,7 @@ mod tests {
                     path_style_access: false,
                 }),
             },
+            parser: "RUSTREGREX".to_string(),
         }
     }
 

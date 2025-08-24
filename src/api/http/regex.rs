@@ -62,6 +62,10 @@ pub async fn submit_new_pattern(
     registry_actor: Data<Arc<Addr<Registry>>>,
     req: web::Json<RegexHttpRequest>,
 ) -> impl Responder {
+    if let Err(e) = req.validate() {
+        return HttpResponse::BadRequest().json(e);
+    }
+
     // 1. Validate regex pattern
     if let Err(validation_errors) = validate_patterns(&req.pattern) {
         return HttpResponse::BadRequest().json(validation_errors);
@@ -75,7 +79,7 @@ pub async fn submit_new_pattern(
     let registry = registry_actor.get_ref().as_ref().clone();
     // Validate of flight exists
     if let Ok(is_flight_exists) = validate_if_flight_exists(&flight, registry.clone()).await {
-        if ! is_flight_exists {
+        if !is_flight_exists {
             HttpResponse::NotFound().json(format!("Flight {} does not exist", flight))
         } else {
             // Send data to broadcast actor for handling

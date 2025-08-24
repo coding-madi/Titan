@@ -7,3 +7,5 @@ pub mod utils;
 
 pub mod catalog;
 pub mod metric;
+
+pub mod parser;

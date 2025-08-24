@@ -21,5 +21,6 @@ storage:
         path_style_access: false
 #    - gcs:
 #        path_style_access: false
+parser: RUSTREGEX
 server: ALL
 

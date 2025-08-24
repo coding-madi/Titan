@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use crate::application::actors::broadcast::BroadcastActor;
 #[cfg(test)]
 use crate::application::actors::factory_actor::tests::MockFactoryActor;
@@ -6,6 +7,8 @@ use crate::application::actors::parser::MockParsingActor;
 use crate::platform::registry::{ParserActor, ParserActorAddr, Registry};
 use actix::{Actor, Addr, AsyncContext, Handler, Message};
 use log::info;
+use crate::core::parser::parser_contract::ParserType;
+use crate::core::parser::rust_regex_engine::RustRegexEngine;
 
 #[derive(Clone, Message)]
 #[rtype(result = "()")]
@@ -61,6 +64,7 @@ impl Handler<CreateBroadcastActor> for FactoryActor {
 pub struct CreateParserActor {
     pub flight_name: String,
     pub count: usize,
+    pub parser_type: ParserType,
 }
 
 impl Handler<CreateParserActor> for FactoryActor {
@@ -70,7 +74,17 @@ impl Handler<CreateParserActor> for FactoryActor {
         let mut result = vec![];
         for i in 0..msg.count {
             let parsing_actor = ParserActorAddr::Real(
-                ParserActor::new(msg.flight_name.clone(), self.registry.clone()).start(),
+                match msg.parser_type {
+                    ParserType::RUSTREGEX => {
+                        ParserActor::new(msg.flight_name.clone(), self.registry.clone(), Arc::new(RustRegexEngine{})).start()
+                    }
+                    ParserType::Grok => {
+                        unimplemented!()
+                    }
+                    ParserType::ArrowRegex => {
+                        unimplemented!()
+                    }
+                }
             );
             #[cfg(test)]
             let parsing_actor =

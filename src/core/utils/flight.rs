@@ -7,7 +7,9 @@ use crate::application::actors::flight_registry::{
 };
 use crate::application::actors::iceberg::{CreateTable, IcebergActor, IcebergActorAddr};
 use crate::core::error::exception::registry::RegistryError;
-use crate::platform::registry::{FetchDbActor, FetchFlightRegistryActor, FetchIcebergActor, Registry};
+use crate::platform::registry::{
+    FetchDbActor, FetchFlightRegistryActor, FetchIcebergActor, Registry,
+};
 use actix::{Addr, Message};
 use actix_web::web::Bytes;
 use arrow_array::RecordBatch;

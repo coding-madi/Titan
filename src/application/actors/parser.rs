@@ -1,7 +1,11 @@
-use actix::{Actor, ActorFutureExt, Addr, AsyncContext, Context, ContextFutureSpawner, Handler, MailboxError, Message, ResponseActFuture, WrapFuture};
+use actix::{
+    Actor, ActorFutureExt, Addr, AsyncContext, Context, ContextFutureSpawner, Handler,
+    MailboxError, Message, ResponseActFuture, WrapFuture,
+};
 use arrow::datatypes::Schema;
 use arrow_array::{Array, BooleanArray, StringArray};
 use std::collections::HashMap;
+use std::sync::Arc;
 use validator::{Validate, ValidationErrors};
 
 use crate::application::actors::broadcast::{BroadcastActorWrapper, RecordBatchWrapper};
@@ -21,6 +25,7 @@ pub struct ParserActor {
     pub patterns: HashMap<String, Vec<Pattern>>, // flight_id → patterns
     pub registry_address: Addr<Registry>,
     pub rhai_meter_actor: Option<Addr<RhaiActor>>, // optional for now
+    pub parser_engine: Arc<dyn ParserContract + Send + Sync>,
 }
 
 impl Actor for ParserActor {
@@ -37,16 +42,17 @@ impl Actor for ParserActor {
 }
 
 impl ParserActor {
-    pub fn default(flight_name: String, registry_address: Addr<Registry>) -> Self {
+    pub fn default(flight_name: String, registry_address: Addr<Registry>, parser_engine: Arc<dyn ParserContract + Send + Sync + 'static>) -> Self {
         Self {
             flight_name,
             patterns: HashMap::new(),
             registry_address,
             rhai_meter_actor: None,
+            parser_engine
         }
     }
 
-    pub fn new(flight_name: String, registry_address: Addr<Registry>) -> Self {
+    pub fn new(flight_name: String, registry_address: Addr<Registry>, parser_engine: Arc<dyn ParserContract + Send + Sync + 'static>) -> Self {
         // let patterns = get_patterns_from_database(&flight_name);
         let patterns = HashMap::new();
         // let schema = get_flight_and_schemas(&flight_name);
@@ -56,6 +62,7 @@ impl ParserActor {
             patterns,
             registry_address,
             rhai_meter_actor: None,
+            parser_engine
         }
     }
 }
@@ -77,7 +84,7 @@ impl SubmitRegexRequest {
             flight_id: regex_request.flight_id.clone(),
             log_group: regex_request.log_group.clone(),
             pattern: regex_request.pattern.clone(),
-            try_parse: true,
+            try_parse: regex_request.try_parse.clone(),
         }
     }
 }
@@ -90,7 +97,10 @@ impl Handler<SubmitRegexRequest> for ParserActor {
     fn handle(&mut self, msg: SubmitRegexRequest, _ctx: &mut Self::Context) -> Self::Result {
         println!("Received RegexRule in parser: {:?}", msg);
         self.patterns.insert(msg.flight_id.clone(), msg.pattern);
-        Ok(Value::String(format!("successfully submitted regex rule - {} for the flight stream - {}", &msg.name, &msg.flight_id)))
+        Ok(Value::String(format!(
+            "successfully submitted regex rule - {} for the flight stream - {}",
+            &msg.name, &msg.flight_id
+        )))
     }
 }
 
@@ -174,6 +184,7 @@ impl Handler<TryParsingRegex> for ParserActor {
         let try_parsing_regex = msg.try_parsing.clone();
         let registry = self.registry_address.clone();
         let flight_name = msg.flight_name.clone();
+        let parser_engine = self.parser_engine.clone();
 
         let futures = async move {
             let iceberg_actor = registry
@@ -194,49 +205,17 @@ impl Handler<TryParsingRegex> for ParserActor {
             let results: Vec<Result<Vec<RecordBatchWrapper>, core::fmt::Error>> =
                 future::join_all(futures).await;
 
-            // let values: Vec<Value> = results
-            //     .into_iter()
-            //     .filter_map(|outer| match outer {
-            //         Ok(inner) => {
-            //             Some(apply_regex(inner, msg).await)
-            //         },
-            //         Err(e) => {
-            //             eprintln!("outer error: {e}");
-            //             None
-            //         }
-            //     })
-            //     .collect();
-
-            let futures: Vec<_> = results
+            let values: Vec<Value> = results
                 .into_iter()
                 .filter_map(|outer| match outer {
-                    Ok(inner) => {
-                        // returns a future
-                        Some(apply_regex(inner, msg.clone()))
-                    }
+                    Ok(inner) => Some(parser_engine.parse(inner, msg.clone().into())),
                     Err(e) => {
                         eprintln!("outer error: {e}");
                         None
                     }
                 })
+                .map(|res| res.unwrap())
                 .collect();
-
-            // Now await them all
-            let values: Vec<Value> = future::join_all(futures).await;
-
-            // let results: Vec<Result<Result<Value, RegexError>, MailboxError>> =
-            //     future::join_all(futures).await;
-
-            // let values: Vec<Value> = results
-            //     .into_iter()
-            //     .filter_map(|outer| match outer {
-            //         Ok(inner) => inner.ok(), // keep only Ok(Value)
-            //         Err(e) => {
-            //             eprintln!("outer error: {e}");
-            //             None
-            //         }
-            //     })
-            //     .collect();
 
             let final_json = serde_json::json!({
                 "message": "Processed results from multiple parsers",
@@ -254,8 +233,6 @@ use crate::api::http::messages::regex_messages::{Pattern, RegexHttpRequest};
 use crate::application::actors::iceberg::IcebergActorAddr::Real;
 use crate::application::actors::rhai_meter::RhaiActor;
 use crate::application::actors::wal::WalActorWrapper;
-use crate::core::error::exception::flight::FlightError;
-use crate::core::error::exception::iceberg_error::IcebergError;
 use crate::core::error::exception::regex::RegexError;
 use crate::platform::registry::{FetchIcebergActor, FetchWalActor, Registry};
 use regex::Regex;
@@ -263,7 +240,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::trace;
 use utoipa::ToSchema;
-use crate::core::utils::regex::apply_regex;
+use crate::core::parser::parser_contract::ParserContract;
 
 #[allow(dead_code)]
 fn fast_regex_match(text_array: &StringArray, pattern: &str) -> Result<BooleanArray, String> {
