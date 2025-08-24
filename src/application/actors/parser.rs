@@ -1,14 +1,12 @@
 use actix::{
-    Actor, ActorFutureExt, Addr, AsyncContext, Context, ContextFutureSpawner, Handler,
-    MailboxError, Message, ResponseActFuture, WrapFuture,
+    Actor, ActorFutureExt, Addr, AsyncContext, Context, ContextFutureSpawner, Handler, Message, ResponseActFuture, WrapFuture,
 };
 use arrow::datatypes::Schema;
 use arrow_array::{Array, BooleanArray, StringArray};
 use std::collections::HashMap;
 use std::sync::Arc;
-use validator::{Validate, ValidationErrors};
 
-use crate::application::actors::broadcast::{BroadcastActorWrapper, RecordBatchWrapper};
+use crate::application::actors::broadcast::RecordBatchWrapper;
 
 #[derive(Message, Clone)]
 #[rtype(result = "()")]
@@ -105,7 +103,6 @@ impl Handler<SubmitRegexRequest> for ParserActor {
 }
 
 use arrow_array::builder::BooleanBuilder;
-use dashmap::DashMap;
 use futures_util::{SinkExt, future};
 use log::error;
 
@@ -236,7 +233,6 @@ use crate::application::actors::wal::WalActorWrapper;
 use crate::core::error::exception::regex::RegexError;
 use crate::platform::registry::{FetchIcebergActor, FetchWalActor, Registry};
 use regex::Regex;
-use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::trace;
 use utoipa::ToSchema;

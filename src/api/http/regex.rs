@@ -1,32 +1,25 @@
-use crate::api::http::messages::regex_messages::{Pattern, RegexHttpRequest, RegexPattern};
-use crate::application::actors::broadcast::BroadcastActorWrapper;
+use crate::api::http::messages::regex_messages::RegexHttpRequest;
 use crate::application::actors::flight_registry::{
     CheckFlight, FlightRegistryActorWrapped, ListFlights,
 };
-use crate::application::actors::parser::{SubmitRegexRequest, TryParsingRegex};
+use crate::application::actors::parser::SubmitRegexRequest;
 use crate::core::error::exception::actor_errors::ErrorType;
-use crate::core::error::exception::regex::RegexError;
 use crate::core::utils::flight::validate_if_flight_exists;
-use crate::core::utils::regex::{is_valid_regex, validate_patterns};
+use crate::core::utils::regex::validate_patterns;
 use crate::platform::registry::{
-    FetchBroadcastActor, FetchFlightRegistryActor, FetchParserActor, Registry,
+    FetchBroadcastActor, FetchFlightRegistryActor, Registry,
 };
 use actix::dev::ToEnvelope;
-use actix::{Actor, Addr, Handler, MailboxError, Message};
+use actix::{Actor, Addr, Handler, MailboxError};
 use actix_web::web::{Data, Path};
 use actix_web::{HttpResponse, Resource, Responder, web};
 use futures_util::SinkExt;
-use regex::Regex;
-use serde_derive::{Deserialize, Serialize};
-/// ========== Models ==========
-use serde_json::Value;
-use serde_json::json;
+use serde_derive::Serialize;
 use std::collections::HashSet;
-use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 use tracing::{info, warn};
 use utoipa::ToSchema;
-use validator::{Validate, ValidationError, ValidationErrors};
+use validator::Validate;
 
 /// ========== Errors ==========
 
@@ -95,7 +88,7 @@ async fn submit_new_pattern_to_broadcast_actor(
     regex_request: &RegexHttpRequest,
     flight: String,
 ) -> HttpResponse {
-    if let Ok(mut broadcast_actor_wrapper) = registry
+    if let Ok(broadcast_actor_wrapper) = registry
         .send(FetchBroadcastActor {
             flight_name: flight.to_string(),
         })

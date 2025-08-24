@@ -20,7 +20,7 @@ impl ParserContract for RustRegexEngine {
 
         let mut final_obj = serde_json::Map::new();
         for record_wrapper in record_wrappers {
-            let mut combined_mask = BooleanArray::from(vec![true; record_wrapper.data.num_rows()]);
+            let combined_mask = BooleanArray::from(vec![true; record_wrapper.data.num_rows()]);
 
             for pattern in &regex_request.pattern {
                 match pattern {

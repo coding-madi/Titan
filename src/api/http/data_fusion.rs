@@ -1,18 +1,16 @@
 use crate::application::actors::iceberg::{GetBuffer, IcebergActorAddr};
-use crate::core::utils::query_parsing::extract_query_table_names;
 use crate::platform::registry::{FetchIcebergActor, Registry};
 use actix::Addr;
 use actix_web::web::Data;
-use actix_web::{FromRequest, Resource, web};
+use actix_web::{Resource, web};
 use arrow_array::RecordBatch;
 use datafusion::catalog::MemTable;
 use datafusion::prelude::*;
 use futures_util::SinkExt;
 use serde_derive::Deserialize;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::sync::Arc;
 use tracing::error;
-use tracing_log::log;
 pub struct DataFusion;
 
 pub fn execute_sql_factory() -> Resource {

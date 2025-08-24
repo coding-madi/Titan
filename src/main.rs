@@ -2,7 +2,6 @@ use actix::Addr;
 use poros::config::yaml_reader::ServerType::{ALL, INJEST, QUERY};
 use poros::config::yaml_reader::read_configuration;
 use poros::version::print_version;
-use std::sync::Arc;
 
 use clap::Parser;
 use poros::application::actors::db::DbActorAddr::Real;

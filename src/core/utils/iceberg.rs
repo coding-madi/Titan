@@ -1,9 +1,7 @@
 use arrow_array::RecordBatch;
-use arrow_schema::{DataType, Schema};
+use arrow_schema::Schema;
 use iceberg::TableIdent;
-use iceberg::spec::{
-    ListType, NestedField, NestedFieldRef, PrimitiveType, Schema as IcebergSchema, StructType, Type,
-};
+use iceberg::spec::Schema as IcebergSchema;
 use std::sync::Arc;
 
 pub fn convert_arrow_to_iceberg_schema(arrow_schema: &Arc<Schema>) -> IcebergSchema {

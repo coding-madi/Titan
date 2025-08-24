@@ -2,7 +2,7 @@ use crate::core::buffer::manager::BufferManager;
 use crate::core::catalog::iceberg_ddl::{create_namespace, create_table};
 use crate::core::error::exception::iceberg_error::IcebergError;
 use crate::core::utils::arrow::concat_batches_grouped;
-use crate::core::utils::iceberg::{convert_arrow_to_iceberg_schema, make_table_ident};
+use crate::core::utils::iceberg::make_table_ident;
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use iceberg::spec::DataFile;
 use iceberg::table::Table;
@@ -13,12 +13,10 @@ use iceberg::writer::file_writer::location_generator::{
     DefaultFileNameGenerator, DefaultLocationGenerator,
 };
 use iceberg::writer::{IcebergWriter, IcebergWriterBuilder};
-use iceberg::{Catalog, NamespaceIdent, TableCreation, TableIdent};
+use iceberg::{Catalog, TableIdent};
 use iceberg_catalog_rest::RestCatalog;
 use log::warn;
 use parquet::file::properties::WriterProperties;
-use std::collections::HashMap;
-use std::error::Error;
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::Mutex;

@@ -1,41 +1,15 @@
-use crate::application::actors::broadcast::{
-    BroadcastActor, BroadcastActorWrapper, Metadata, RecordBatchWrapper,
-};
-use crate::application::actors::db::{DbActorAddr, SaveSchema};
-use crate::application::actors::factory_actor::FactoryActorAddr::Real;
-use crate::application::actors::factory_actor::{CreateBroadcastActor, CreateParserActor};
-use crate::application::actors::flight_registry::{Fields, FlightRegistryActorWrapped};
-use crate::application::actors::iceberg::{CreateTable, IcebergActorAddr};
-use crate::core::utils::flight::{
-    create_flight_info, encode_record_batch_flight_data, handle_record_batch_put_message,
-    initialize_stream, schema_to_flight_data, set_flight_name, set_schema,
-};
-use crate::platform::registry::{
-    FetchDbActor, FetchFactoryActor, FetchFlightRegistryActor,
-    FetchIcebergActor, ParserActor, Registry,
-};
 use actix::dev::Stream;
-use actix::{Actor, Addr};
-use actix_web::web::Bytes;
-use arrow::record_batch::RecordBatch;
 use arrow_flight::{
     Action, ActionType, Criteria, Empty, FlightData, FlightDescriptor, FlightInfo,
     HandshakeRequest, HandshakeResponse, PollInfo, PutResult, SchemaResult, Ticket,
     flight_service_server::FlightService,
 };
-use arrow_ipc::writer::{DictionaryTracker, IpcDataGenerator, IpcWriteOptions};
 use futures::stream;
-use futures_util::{SinkExt, StreamExt};
-use std::time::Instant;
-use std::vec;
-use std::{collections::HashMap, pin::Pin, sync::Arc};
-use std::ops::Deref;
-use tokio::sync::Mutex;
+use futures_util::StreamExt;
+use std::pin::Pin;
 use tonic::{Request, Response, Status, Streaming};
-use tracing::{error, info};
+use tracing::error;
 use crate::application::service::injest_service::InjestService;
-use crate::config::yaml_reader::Settings;
-use crate::core::parser::parser_contract::ParserType;
 
 pub struct LogFlightServer {
     // pub data: Arc<Mutex<HashMap<String, Vec<RecordBatch>>>>,

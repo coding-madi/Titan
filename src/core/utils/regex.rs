@@ -1,13 +1,6 @@
 use crate::api::http::messages::regex_messages::{Pattern, RegexPattern};
-use crate::application::actors::broadcast::RecordBatchWrapper;
-use crate::application::actors::parser::TryParsingRegex;
 use crate::core::error::exception::regex::RegexError;
-use arrow::compute::filter_record_batch;
-use arrow_array::{Array, BooleanArray, StringArray};
-use log::info;
 use regex::Regex;
-use serde_json::Value;
-use tracing::debug;
 use validator::ValidationError;
 
 // pub async fn apply_regex(

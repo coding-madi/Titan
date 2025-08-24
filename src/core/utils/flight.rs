@@ -1,16 +1,16 @@
 use crate::application::actors::broadcast::{
-    BroadcastActor, BroadcastActorWrapper, Metadata, RecordBatchWrapper,
+    BroadcastActor, Metadata, RecordBatchWrapper,
 };
 use crate::application::actors::db::{DbActorAddr, SaveSchema};
 use crate::application::actors::flight_registry::{
     CheckFlight, Fields, FlightRegistryActorWrapped, RegisterFlight,
 };
-use crate::application::actors::iceberg::{CreateTable, IcebergActor, IcebergActorAddr};
+use crate::application::actors::iceberg::{CreateTable, IcebergActorAddr};
 use crate::core::error::exception::registry::RegistryError;
 use crate::platform::registry::{
     FetchDbActor, FetchFlightRegistryActor, FetchIcebergActor, Registry,
 };
-use actix::{Addr, Message};
+use actix::Addr;
 use actix_web::web::Bytes;
 use arrow_array::RecordBatch;
 use arrow_flight::utils::flight_data_to_arrow_batch;

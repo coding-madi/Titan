@@ -1,10 +1,8 @@
-use actix::{Actor, Addr};
+use actix::Addr;
 use actix_web::web::ServiceConfig;
 use arrow_flight::flight_service_server::FlightServiceServer;
 use std::net::SocketAddr;
-use std::ops::Deref;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::{
     signal,
     sync::oneshot::{self, Sender},
@@ -90,8 +88,8 @@ impl PorosServer for InjestServer {
             .max_frame_size(Some(16_777_215)) // maximum allowed by h2      // max HTTP2 frame
             .add_service(
                 FlightServiceServer::new(log_flight_server)
-                    .max_decoding_message_size((128 * 1024 * 1024))
-                    .max_encoding_message_size((128 * 1024 * 1024)),
+                    .max_decoding_message_size(128 * 1024 * 1024)
+                    .max_encoding_message_size(128 * 1024 * 1024),
             )
             .serve_with_shutdown(flight_address, Self::shutdown_handler(shutdown_rx));
 
@@ -149,7 +147,6 @@ use crate::platform::registry::Registry;
 use crate::servers::server::PorosServer;
 use tokio::sync::oneshot::Receiver;
 use tracing::log::error;
-use tracing_subscriber::registry;
 use crate::application::service::injest_service::InjestService;
 
 impl InjestServer {

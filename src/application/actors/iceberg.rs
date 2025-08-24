@@ -5,12 +5,10 @@
 // This should be done on a mmap file and the metadata should be stored in Flatbuf.
 
 use crate::application::actors::broadcast::RecordBatchWrapper;
-use crate::config::yaml_reader::{ObjectStorage, S3Properties, Storage};
+use crate::config::yaml_reader::Storage;
 use crate::core::buffer::full_drain::FullDrain;
 use crate::core::buffer::manager::BufferManager;
-use crate::core::catalog::iceberg_operations::{
-    create_parquet_writer, flush_buffer, load_table, write_and_close,
-};
+use crate::core::catalog::iceberg_operations::flush_buffer;
 use crate::core::catalog::rest_catalog_factory::create_rest_catalog;
 use crate::core::error::exception::iceberg_error::IcebergError;
 use crate::core::utils::iceberg::convert_arrow_to_iceberg_schema;
@@ -18,7 +16,6 @@ use crate::platform::registry::Registry;
 #[cfg(test)]
 use actix::Context;
 use actix::{Actor, Addr, AsyncContext, Handler, Message, ResponseFuture};
-use iceberg::writer::file_writer::location_generator::DefaultLocationGenerator;
 use iceberg::{Catalog, NamespaceIdent, TableCreation};
 use iceberg_catalog_rest::RestCatalog;
 use log::error;

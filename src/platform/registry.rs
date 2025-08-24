@@ -1,12 +1,10 @@
-use actix::{Actor, Addr, AsyncContext, Handler, Message};
-use dashmap::DashMap;
-use mockall::Any;
+use actix::{Actor, Handler, Message};
 use std::io::Error;
 use tracing::error;
 use tracing::log::trace;
 
 // Core Actor imports
-use crate::application::actors::broadcast::{BroadcastActor, BroadcastActorWrapper};
+use crate::application::actors::broadcast::BroadcastActorWrapper;
 use crate::application::actors::db::{DbActor, DbActorAddr};
 use crate::application::actors::flight_registry::{FlightRegistry, FlightRegistryActorWrapped};
 use crate::application::actors::iceberg::{IcebergActor, IcebergActorAddr};
@@ -27,7 +25,6 @@ use crate::application::actors::flight_registry::MockFlightRegistry;
 use crate::application::actors::iceberg::MockIcebergActor;
 #[cfg(test)]
 use crate::application::actors::parser::MockParsingActor;
-use crate::application::actors::rhai_meter::{RhaiActor, RhaiActorAddr};
 #[cfg(test)]
 use crate::application::actors::wal::MockWalActor;
 use crate::core::error::exception::registry::RegistryError;
@@ -322,7 +319,7 @@ impl Handler<RegisterBroadcastActor> for Registry {
 }
 
 fn merge_broadcast_actors(
-    mut current: &BroadcastActorWrapper,
+    current: &BroadcastActorWrapper,
     new: BroadcastActorWrapper,
 ) -> Result<BroadcastActorWrapper, RegistryError> {
     match (current.clone(), &new.clone()) {

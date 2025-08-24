@@ -4,7 +4,6 @@ use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::io::ErrorKind;
 use tracing::{error, trace};
 
 #[derive(Clone, Message)]
@@ -214,20 +213,16 @@ impl Handler<TryParsingRegex> for BroadcastActor {
     }
 }
 
-use crate::api::http::messages::regex_messages::RegexHttpRequest;
 use crate::application::actors::parser::{SubmitRegexRequest, TryParsingRegex};
-use crate::core::error::exception::flight::FlightError;
 use crate::core::error::exception::regex::RegexError;
 use crate::platform::registry::{
-    FetchIcebergActor, FetchParserActor, ParserActor, ParserActorAddr, RegisterBroadcastActor,
+    ParserActorAddr, RegisterBroadcastActor,
     Registry,
 };
 use actix::fut::ActorFutureExt;
 use futures_util::{FutureExt, SinkExt, future};
 use serde_json::Value;
-use sqlx::types::JsonValue;
 use std::sync::Arc;
-use validator::ValidationErrors;
 
 #[derive(Debug, Clone, actix::Message)]
 #[rtype(result = "()")]

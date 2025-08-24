@@ -1,9 +1,7 @@
 use crate::application::actors::broadcast::RecordBatchWrapper;
 use crate::core::buffer::drain_strategy::BufferDrain;
-use arrow::compute::concat_batches;
 use arrow_array::RecordBatch;
 use dashmap::DashMap;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 

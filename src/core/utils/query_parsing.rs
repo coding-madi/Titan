@@ -1,4 +1,4 @@
-use sqlparser::ast::{Expr, Query, SetExpr, Statement, TableFactor, TableWithJoins};
+use sqlparser::ast::Statement;
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
 use std::collections::HashSet;
