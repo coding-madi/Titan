@@ -4,29 +4,31 @@ use tracing::error;
 use tracing::log::trace;
 
 // Core Actor imports
-use crate::application::actors::broadcast::BroadcastActorWrapper;
-use crate::application::actors::db::{DbActor, DbActorAddr};
-use crate::application::actors::flight_registry::{FlightRegistry, FlightRegistryActorWrapped};
-use crate::application::actors::iceberg::{IcebergActor, IcebergActorAddr};
-pub(crate) use crate::application::actors::parser::{ParserActor, ParserActorAddr};
-use crate::application::actors::wal::{WalActor, WalActorWrapper};
+use crate::application::actors::broadcast_actor::BroadcastActorWrapper;
+use crate::application::actors::db_actor::{DbActor, DbActorAddr};
+use crate::application::actors::flight_registry_actor::{
+    FlightRegistry, FlightRegistryActorWrapped,
+};
+use crate::application::actors::iceberg_actor::{IcebergActor, IcebergActorAddr};
+pub(crate) use crate::application::actors::parser_actor::{ParserActor, ParserActorAddr};
+use crate::application::actors::wal_actor::{WalActor, WalActorWrapper};
 
 // Test-only mock imports
 #[cfg(test)]
-use crate::application::actors::broadcast::MockBroadcastActor;
+use crate::application::actors::broadcast_actor::MockBroadcastActor;
 #[cfg(test)]
-use crate::application::actors::db::MockDbActor;
+use crate::application::actors::db_actor::MockDbActor;
 #[cfg(test)]
-use crate::application::actors::factory_actor::tests::MockFactoryActor;
-use crate::application::actors::factory_actor::{FactoryActor, FactoryActorAddr};
+use crate::application::actors::factory::factory_actor::tests::MockFactoryActor;
+use crate::application::actors::factory::factory_actor::{FactoryActor, FactoryActorAddr};
 #[cfg(test)]
-use crate::application::actors::flight_registry::MockFlightRegistry;
+use crate::application::actors::flight_registry_actor::MockFlightRegistry;
 #[cfg(test)]
-use crate::application::actors::iceberg::MockIcebergActor;
+use crate::application::actors::iceberg_actor::MockIcebergActor;
 #[cfg(test)]
-use crate::application::actors::parser::MockParsingActor;
+use crate::application::actors::parser_actor::MockParsingActor;
 #[cfg(test)]
-use crate::application::actors::wal::MockWalActor;
+use crate::application::actors::wal_actor::MockWalActor;
 use crate::core::error::exception::registry::RegistryError;
 
 // Registry struct
@@ -346,4 +348,32 @@ fn merge_broadcast_actors(
             "Error in actor types".to_string(),
         )),
     }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<ActorAddr, RegistryError>")]
+pub struct FetchActor {
+    pub kind: ActorKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum ActorKind {
+    Db,
+    FlightRegistry,
+    Iceberg,
+    Wal,
+    Parser,
+    Factory,
+    Broadcast,
+}
+
+#[derive(Debug, Clone)]
+pub enum ActorAddr {
+    Db(DbActorAddr),
+    FlightRegistry(FlightRegistryActorWrapped),
+    Iceberg(IcebergActorAddr),
+    Wal(WalActorWrapper),
+    Parser(ParserActorAddr),
+    Factory(FactoryActorAddr),
+    Broadcast(BroadcastActorWrapper),
 }

@@ -1,9 +1,9 @@
 use crate::config::database_conf::DatabaseType;
 use crate::config::yaml_reader::Settings;
+use crate::core::db::driver::postgres::PostgresSchemaRepository;
+use crate::core::db::driver::sqlite::SqliteSchemaRepository;
 use crate::core::db::factory::pg_database_factory::PGDatabaseFactory;
 use crate::core::db::factory::sqlite_database_factory::SqliteDatabaseFactory;
-use crate::core::db::postgres::PostgresSchemaRepository;
-use crate::core::db::sqlite::SqliteSchemaRepository;
 use sqlx::{PgPool, SqlitePool};
 use std::error::Error;
 use std::fmt::Debug;

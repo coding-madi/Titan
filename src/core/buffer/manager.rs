@@ -1,4 +1,4 @@
-use crate::application::actors::broadcast::RecordBatchWrapper;
+use crate::application::actors::broadcast_actor::RecordBatchWrapper;
 use crate::core::buffer::drain_strategy::BufferDrain;
 use arrow_array::RecordBatch;
 use dashmap::DashMap;
@@ -50,9 +50,9 @@ impl BufferManager {
         let buffer = self.buffer.clone();
         tokio::spawn(async move {
             while let Some(el) = rx.recv().await {
-                let flight = el.metadata.flight.clone();
+                let flight_name = el.get_flight_name().to_string();
                 buffer
-                    .entry(flight)
+                    .entry(flight_name)
                     .or_insert_with(|| Vec::with_capacity(64))
                     .push(el);
             }

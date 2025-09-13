@@ -1,7 +1,7 @@
 use crate::config::database_conf::DatabaseType;
 use crate::config::yaml_reader::Settings;
+use crate::core::db::driver::postgres::PostgresSchemaRepository;
 use crate::core::db::factory::database_factory::{AnyPool, DatabaseFactory, PostgresRepositories};
-use crate::core::db::postgres::PostgresSchemaRepository;
 use sqlx::PgPool;
 use sqlx::migrate::Migrator;
 use std::path::Path;

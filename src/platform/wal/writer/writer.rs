@@ -1,4 +1,4 @@
-use crate::application::actors::broadcast::RecordBatchWrapper;
+use crate::application::actors::broadcast_actor::RecordBatchWrapper;
 use crate::core::utils::cksum;
 use crate::platform::wal::layout::WalBlockHeader;
 use arrow_ipc::writer::StreamWriter;
@@ -27,7 +27,7 @@ pub async fn write_wal_block_async(
     let (data_buf, _schema) = tokio::task::spawn_blocking({
         let wrapper = Arc::clone(&record_batch_wrapper);
         move || {
-            let record_batch = &wrapper.data;
+            let record_batch = &wrapper.get_data();
 
             let mut data_buf = Vec::new();
             let mut arrow_writer =

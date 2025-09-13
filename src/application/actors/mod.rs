@@ -1,13 +1,9 @@
-pub mod broadcast;
-pub mod db;
-pub mod dispatch;
-pub mod iceberg;
-pub mod init;
-pub mod parser;
-pub mod wal;
-
-mod broadcast_test;
-pub mod factory_actor;
-pub mod flight_registry;
-pub mod rhai_meter;
-pub mod wal_test;
+pub mod broadcast_actor;
+pub mod db_actor;
+pub mod factory;
+pub mod flight_registry_actor;
+pub mod iceberg_actor;
+pub mod parser_actor;
+pub mod rhai_actor;
+mod tests;
+pub mod wal_actor;

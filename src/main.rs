@@ -4,9 +4,9 @@ use poros::config::yaml_reader::read_configuration;
 use poros::version::print_version;
 
 use clap::Parser;
-use poros::application::actors::db::DbActorAddr::Real;
-use poros::application::actors::db::ReposReady;
-use poros::application::actors::init::init_actors;
+use poros::application::actors::db_actor::DbActorAddr::Real;
+use poros::application::actors::db_actor::ReposReady;
+use poros::application::actors::factory::factory::init_actors;
 use poros::core::db::init_repositories;
 use poros::core::logging::file_writer::FileWriter;
 use poros::core::logging::subscriber::{get_subscribers, init_subscriber};

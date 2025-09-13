@@ -78,7 +78,8 @@ impl PorosServer for InjestServer {
         let flight_address = get_flight_server_endpoint(config);
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
-        let injest_service = InjestService::new(self.actor_registry.clone(), Arc::new(config.to_owned()));
+        let injest_service =
+            InjestService::new(self.actor_registry.clone(), Arc::new(config.to_owned()));
 
         // Injest the service layer into the controller
         let log_flight_server = LogFlightServer::new(injest_service);
@@ -139,7 +140,8 @@ impl PorosServer for InjestServer {
     }
 }
 
-use crate::api::flight::flight_service::LogFlightServer;
+use crate::api::flight::service::LogFlightServer;
+use crate::application::service::ingest_service::InjestService;
 use crate::config::yaml_reader::Settings;
 use crate::core::db::factory::database_factory::RepositoryProvider;
 use crate::core::error::exception::server_error::ServerError;
@@ -147,7 +149,6 @@ use crate::platform::registry::Registry;
 use crate::servers::server::PorosServer;
 use tokio::sync::oneshot::Receiver;
 use tracing::log::error;
-use crate::application::service::injest_service::InjestService;
 
 impl InjestServer {
     async fn shutdown_handler(shutdown_rx: Receiver<()>) {

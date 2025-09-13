@@ -1,0 +1,68 @@
+meta {
+  name: Create a metric rule example
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/metric-rule
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "rule_name": "error_rate_alert",
+    "scope": "Global",
+    "window_sec": 60,
+    "filter": {
+      "And": [
+        {
+          "Eq": [
+            "status",
+            "500"
+          ]
+        },
+        {
+          "RegexMatch": [
+            "service",
+            "auth.*"
+          ]
+        }
+      ]
+    },
+    "group_by": [
+      "service",
+      "host"
+    ],
+    "aggregations": [
+      {
+        "Count": null
+      },
+      {
+        "Sum": {
+          "Field": "latency_ms"
+        }
+      },
+      {
+        "Avg": {
+          "CastToFloat": "cpu_usage"
+        }
+      },
+      {
+        "Min": {
+          "Field": "memory_usage"
+        }
+      },
+      {
+        "Max": {
+          "CastToInt": "connections"
+        }
+      }
+    ]
+  }
+}
+
+settings {
+  encodeUrl: true
+}

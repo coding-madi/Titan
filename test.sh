@@ -1,0 +1,26 @@
+curl --request POST \
+  --url http://localhost:8890/api/v1/pattern \
+  --header 'content-type: application/json' \
+  --data '{
+  "flight_id": "log",
+  "log_group": "log_group_A",
+  "name": "meowww",
+  "pattern": [
+    {
+      "type": "RegexPattern",
+      "value": {
+        "field": "str_field_3",
+        "pattern_string": "^(?P<first>.{2}).*(?P<last>.{2})$"
+      }
+    },
+    {
+      "type": "RegexPattern",
+      "value": {
+        "field": "str_field_2",
+        "pattern_string": "^(?P<first>.{2}).*(?P<last2>.{2})$"
+      }
+    }
+  ],
+  "tenant": "",
+  "try_parse": true
+}'

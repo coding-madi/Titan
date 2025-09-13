@@ -7,6 +7,8 @@ pub enum RegexError {
     RegexIncorrect(String),
     #[error("Error execution of dataset {0}")]
     RegexExecutionError(String),
+    #[error("No matching pattern {0}")]
+    NoMatchingPattern(String),
 }
 
 impl From<String> for RegexError {

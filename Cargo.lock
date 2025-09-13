@@ -4187,6 +4187,7 @@ dependencies = [
  "mockall",
  "num_cpus",
  "parquet",
+ "rand 0.8.5",
  "rayon",
  "regex",
  "reqwest",

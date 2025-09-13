@@ -9,7 +9,7 @@ pub struct Settings {
     pub server: ServerType,
     pub flight: FlightConf,
     pub storage: Storage,
-    pub parser: String
+    pub parser: String,
 }
 
 #[derive(Deserialize, Clone)]

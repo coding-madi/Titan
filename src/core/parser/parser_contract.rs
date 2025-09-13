@@ -1,21 +1,21 @@
-use crate::api::http::messages::regex_messages::RegexHttpRequest;
-use crate::application::actors::broadcast::RecordBatchWrapper;
+use crate::application::actors::broadcast_actor::RecordBatchWrapper;
 use crate::core::error::exception::regex::RegexError;
-use serde_json::Value;
+use crate::core::parser::messages::parser::Pattern;
+use std::collections::HashMap;
 
 pub trait ParserContract: Sync + Send {
     fn parse(
         &self,
         arrow_buffers: Vec<RecordBatchWrapper>,
-        regex_request: RegexHttpRequest,
-    ) -> Result<Value, RegexError>;
+        pattern: HashMap<String, Vec<Pattern>>,
+        sample: bool,
+    ) -> Result<Vec<RecordBatchWrapper>, RegexError>;
 }
-
 
 pub enum ParserType {
     RUSTREGEX,
     Grok,
-    ArrowRegex
+    ArrowRegex,
 }
 
 impl From<String> for ParserType {

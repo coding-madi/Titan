@@ -19,7 +19,16 @@ def make_schema() -> pa.Schema:
     nested_fields = []
     field_id_counter = 0
 
-    # 1. Define and collect all top-level fields first
+    # --- Add log_group_name and log_name first ---
+    field_id_counter += 1
+    top_level_fields.append(
+        pa.field("log_group_name", pa.string(), metadata={"PARQUET:field_id": str(field_id_counter)})
+    )
+    field_id_counter += 1
+    top_level_fields.append(
+        pa.field("log_name", pa.string(), metadata={"PARQUET:field_id": str(field_id_counter)})
+    )
+
     # Primitive fields (20+20+20+10+10+5 = 85 fields)
     for i in range(20):
         field_id_counter += 1
@@ -49,18 +58,16 @@ def make_schema() -> pa.Schema:
     # Struct fields (5 parent fields)
     for i in range(5):
         field_id_counter += 1
-        # Use a temporary placeholder for the struct type
         top_level_fields.append(
             pa.field(f"struct_field_{i}", pa.null(), metadata={"PARQUET:field_id": str(field_id_counter)}))
 
     # List fields (5 parent fields)
     for i in range(5):
         field_id_counter += 1
-        # Use a temporary placeholder for the list type
         top_level_fields.append(
             pa.field(f"list_field_{i}", pa.null(), metadata={"PARQUET:field_id": str(field_id_counter)}))
 
-    # 2. Define and collect all nested fields
+    # Define nested fields
     for i in range(5):
         field_id_counter += 1
         nested_fields.append(
@@ -73,32 +80,32 @@ def make_schema() -> pa.Schema:
         field_id_counter += 1
         nested_fields.append(pa.field("element", pa.int32(), metadata={"PARQUET:field_id": str(field_id_counter)}))
 
-    # 3. Reconstruct the schema with the correct types and nested fields
-    # This requires a bit of manual reconstruction
-
-    # Map the field names to the correct types
+    # Reconstruct schema with correct struct/list types
     final_fields = {}
     nested_idx = 0
     for field in top_level_fields:
         if field.name.startswith("struct_field_"):
-            # Get the correct nested fields from the list
             struct_fields = pa.struct([nested_fields[nested_idx], nested_fields[nested_idx + 1]])
             final_fields[field.name] = pa.field(field.name, struct_fields, metadata=field.metadata)
             nested_idx += 2
         elif field.name.startswith("list_field_"):
-            # Get the correct nested element field from the list
             list_field = pa.list_(nested_fields[nested_idx])
             final_fields[field.name] = pa.field(field.name, list_field, metadata=field.metadata)
             nested_idx += 1
         else:
             final_fields[field.name] = field
 
-    # Return the schema
     return pa.schema(list(final_fields.values()))
 
 
 def generate_complex_batch(num_rows: int, schema: pa.Schema) -> pa.Table:
     arrays = []
+
+    # --- New: log_group_name and log_name ---
+    log_groups = [f"log_group_{random.choice(['A','B','C','D','E'])}" for _ in range(num_rows)]
+    log_names = [f"log_{i}" for i in range(num_rows)]
+    arrays.append(pa.array(log_groups, type=pa.string()))
+    arrays.append(pa.array(log_names, type=pa.string()))
 
     # Primitives
     for _ in range(20):

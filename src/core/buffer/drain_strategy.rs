@@ -1,4 +1,4 @@
-use crate::application::actors::broadcast::RecordBatchWrapper;
+use crate::application::actors::broadcast_actor::RecordBatchWrapper;
 use dashmap::DashMap;
 
 pub trait BufferDrain {

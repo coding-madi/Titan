@@ -6,6 +6,8 @@ pub mod schema;
 pub mod utils;
 
 pub mod catalog;
-pub mod metric;
+pub mod rhai;
 
 pub mod parser;
+
+pub mod metric;

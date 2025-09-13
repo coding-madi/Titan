@@ -3,4 +3,5 @@ pub mod flight;
 pub mod iceberg_error;
 pub mod regex;
 pub mod registry;
+pub mod rhai_error;
 pub mod server_error;

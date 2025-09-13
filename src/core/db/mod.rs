@@ -6,10 +6,9 @@ use crate::core::db::factory::database_factory::{
 };
 use std::sync::Arc;
 
+mod driver;
 pub mod factory;
-pub mod postgres;
 pub mod repository;
-pub mod sqlite;
 
 pub async fn init_repositories(config: &Settings) -> Arc<dyn RepositoryProvider> {
     let repositories: Arc<dyn RepositoryProvider> = match config.database.database_type {

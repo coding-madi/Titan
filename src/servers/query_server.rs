@@ -1,6 +1,7 @@
-use crate::api::http::data_fusion::execute_sql_factory;
-use crate::api::http::health::get_health_endpoint_factory;
-use crate::api::http::regex::{get_all_flights_factory, submit_new_pattern_factory};
+use crate::api::http::routes::data_fusion::execute_sql_factory;
+use crate::api::http::routes::health::get_health_endpoint_factory;
+use crate::api::http::routes::metrics::submit_new_metric_rule_factory;
+use crate::api::http::routes::regex::{get_all_flights_factory, submit_new_pattern_factory};
 use crate::config::yaml_reader::Settings;
 use crate::core::error::exception::server_error::ServerError;
 use crate::platform::registry::Registry;
@@ -38,6 +39,7 @@ impl PorosServer for QueryServer {
                     .service(submit_new_pattern_factory())
                     .service(get_all_flights_factory())
                     .service(execute_sql_factory())
+                    .service(submit_new_metric_rule_factory())
                     .service(Redoc::with_url("/redoc", ApiDoc::openapi())),
             )
             .service(
@@ -131,12 +133,12 @@ async fn shutdown_hook(shutdown_receiver: oneshot::Receiver<()>) {
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        crate::api::http::health::get_health_endpoint_factory,
-        crate::api::http::regex::get_all_flights_factory,
-        crate::api::http::regex::submit_new_pattern_factory
+        crate::api::http::routes::health::get_health_endpoint_factory,
+        crate::api::http::routes::regex::get_all_flights_factory,
+        crate::api::http::routes::regex::submit_new_pattern_factory
     ),
     components(
-        schemas(crate::api::http::regex::FlightsList)
+        schemas(crate::api::http::routes::regex::FlightsList)
     ),
     tags(
         (name = "Health", description = "Health check"),

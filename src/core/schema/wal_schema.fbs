@@ -57,3 +57,4 @@ table FlatbufMeta {
 }
 
 root_type FlatbufMeta; // Declares FlatbufMeta as the root object type for this Schema
+

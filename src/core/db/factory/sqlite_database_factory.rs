@@ -1,7 +1,7 @@
 use crate::config::database_conf::DatabaseType;
 use crate::config::yaml_reader::Settings;
+use crate::core::db::driver::sqlite::SqliteSchemaRepository;
 use crate::core::db::factory::database_factory::{AnyPool, DatabaseFactory, SqliteRepositories};
-use crate::core::db::sqlite::SqliteSchemaRepository;
 use sqlx::SqlitePool;
 use sqlx::migrate::Migrator;
 use std::path::Path;

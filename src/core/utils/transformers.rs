@@ -4,7 +4,7 @@ use flatbuffers::FlatBufferBuilder;
 
 // Using fully qualified paths for generated Flatbuffers types for clarity
 // This assumes 'wal_schema_generated' is generated into a 'wal' module.
-use crate::application::actors::broadcast::{Metadata, RecordBatchWrapper};
+use crate::application::actors::broadcast_actor::{Metadata, RecordBatchWrapper};
 use crate::schema::wal_schema_generated::wal::{
     FlatbufMeta,
     FlatbufMetaArgs,
@@ -34,7 +34,11 @@ pub fn serialize_record_batch_without_schema(record_batch_wrapper: &RecordBatchW
 
     // Encode the Arrow RecordBatch, including any dictionaries
     let (dictionaries, batch_data) = generator
-        .encoded_batch(&record_batch_wrapper.data, &mut dictionary_tracer, &options)
+        .encoded_batch(
+            &record_batch_wrapper.get_data(),
+            &mut dictionary_tracer,
+            &options,
+        )
         .expect("Failed to encode RecordBatch");
 
     let mut buffer: Vec<u8> = Vec::new();
@@ -58,12 +62,12 @@ pub fn serialize_record_batch_full_ipc(record_batch: &RecordBatchWrapper) -> Vec
 
     // Create a StreamWriter which automatically handles writing the Schema header
     // and subsequent data/dictionary messages.
-    let mut writer = StreamWriter::try_new(&mut buffer, &record_batch.data.schema())
+    let mut writer = StreamWriter::try_new(&mut buffer, &record_batch.get_data().schema())
         .expect("Failed to create IPC stream writer");
 
     // Write the record batch to the stream
     writer
-        .write(&record_batch.data)
+        .write(&record_batch.get_data())
         .expect("Failed to write RecordBatch to IPC stream");
 
     // Finish the stream, ensuring all buffered data is written
@@ -93,8 +97,7 @@ pub fn build_flatbufmeta_with_logmeta<'a>(metadata: &Metadata) -> Vec<u8> {
     let mut builder = FlatBufferBuilder::new();
 
     // Create Flatbuffers strings for flight_id and service_id
-    let flight_id_fb_str = Some(builder.create_string(&metadata.flight));
-    let service_id_fb_str = Some(builder.create_string(&metadata.service_id));
+    let flight_id_fb_str = Some(builder.create_string(&metadata.get_flight_name()));
 
     // Build the nested LogMeta table for the union
     let log_meta_offset = LogMeta::create(
@@ -104,7 +107,7 @@ pub fn build_flatbufmeta_with_logmeta<'a>(metadata: &Metadata) -> Vec<u8> {
             schema_id: 1,       // Example: Fixed Schema ID
             schema_hash: 123,   // Example: Fixed Schema hash
             arrow_buffer_id: 1, // Example: Fixed Arrow buffer ID
-            service_id: service_id_fb_str,
+            service_id: None,
             partition_fields: None, // No partition fields for this example
         },
     );
@@ -134,4 +137,13 @@ pub fn build_flatbufmeta_with_logmeta<'a>(metadata: &Metadata) -> Vec<u8> {
 
     // Get the finished data as a Vec<u8>
     builder.finished_data().to_vec()
+}
+
+pub fn flatten_list<V, E1, E2>(list: Vec<Result<Result<V, E1>, E2>>) -> Vec<V> {
+    list.into_iter()
+        .filter_map(|outer| match outer {
+            Ok(inner) => inner.ok(),
+            Err(_) => None,
+        })
+        .collect()
 }
