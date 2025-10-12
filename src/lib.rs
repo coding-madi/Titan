@@ -6,6 +6,8 @@ pub mod platform;
 pub mod servers;
 pub mod version;
 
+pub mod monitor;
+
 #[allow(dead_code, unused_imports)] // Apply to the module
 pub mod schema {
     include!("core/schema/mod.rs");

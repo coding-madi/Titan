@@ -1,13 +1,5 @@
-use crate::application::actors::broadcast_actor::RecordBatchWrapper;
-use arrow::compute;
-use arrow::compute::filter_record_batch;
-use arrow::compute::kernels::{cmp, comparison};
-use arrow_array::builder::{Int64Builder, StringBuilder};
-use arrow_array::{Array, ArrayRef, BooleanArray, Int64Array, RecordBatch, StringArray};
-use arrow_schema::{ArrowError, DataType};
-use std::collections::HashMap;
-use std::sync::Arc;
-use tracing::error;
+use crate::api::http::messages::metric_message::AggregationFn;
+use crate::core::rhai::planner::filter::{Condition, FilterOperator, FilterValue, Operator};
 
 /// Rhai gets converted into this object
 /// This only store the metadata about the plan.
@@ -21,57 +13,9 @@ pub enum AggregateOperation {
     Avg,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Operator {
-    Eq,
-    NotEq,
-    Gt,
-    Gte,
-    Lt,
-    Lte,
-
-    // string operations
-    Like,
-    ILike,
-    In,
-    NotIn,
-    Regex,
-    NotRegex,
-    IsNull,
-    IsNotNull,
-    BeginsWith,
-    EndsWith,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum FilterValue {
-    Int(i64),
-    String(String),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Condition {
-    pub column: String,
-    pub op: Operator,
-    pub value: FilterValue,
-}
-
-impl Condition {
-    pub fn get_column(&self) -> &str {
-        &self.column
-    }
-}
-#[derive(Debug, Clone)]
-pub enum Filter {
-    // A single condition
-    Condition(Condition),
-    And(Vec<Filter>),
-    Or(Vec<Filter>),
-}
-
 #[derive(Debug, Clone)]
 pub struct QueryPlanner {
-    pub filter: Option<Filter>,
+    pub filter: Option<FilterOperator>,
     pub group_by: Vec<String>,
     pub aggregates: Vec<(AggregateOperation, String)>, // (op, column)
     pub window: Option<usize>,
@@ -90,9 +34,24 @@ impl QueryPlanner {
     }
 }
 
+impl From<&AggregationFn> for (AggregateOperation, String) {
+    fn from(agg: &AggregationFn) -> Self {
+        match agg {
+            AggregationFn::Count(col_opt) => {
+                let col_name = col_opt.clone().unwrap_or_else(|| "*".to_string());
+                (AggregateOperation::Count, col_name)
+            }
+            AggregationFn::Sum(expr) => (AggregateOperation::Sum, expr.into()),
+            AggregationFn::Avg(expr) => (AggregateOperation::Avg, expr.into()),
+            AggregationFn::Min(expr) => (AggregateOperation::Min, expr.into()),
+            AggregationFn::Max(expr) => (AggregateOperation::Max, expr.into()),
+        }
+    }
+}
+
 /// Create binding functions for DSL
 impl QueryPlanner {
-    pub fn filter(mut self, f: Filter) -> Self {
+    pub fn filter(mut self, f: FilterOperator) -> Self {
         self.filter = Some(f);
         self
     }
@@ -129,32 +88,32 @@ impl QueryPlanner {
         self
     }
 
-    pub fn eq_int(col: &str, val: i64) -> Filter {
-        Filter::Condition(Condition {
+    pub fn eq_int(col: &str, val: i64) -> FilterOperator {
+        FilterOperator::Condition(Condition {
             column: col.into(),
             op: Operator::Eq,
             value: FilterValue::Int(val),
         })
     }
 
-    pub fn gt_int(col: &str, val: i64) -> Filter {
-        Filter::Condition(Condition {
+    pub fn gt_int(col: &str, val: i64) -> FilterOperator {
+        FilterOperator::Condition(Condition {
             column: col.into(),
             op: Operator::Gt,
             value: FilterValue::Int(val),
         })
     }
 
-    pub fn lt_int(col: &str, val: i64) -> Filter {
-        Filter::Condition(Condition {
+    pub fn lt_int(col: &str, val: i64) -> FilterOperator {
+        FilterOperator::Condition(Condition {
             column: col.into(),
             op: Operator::Lt,
             value: FilterValue::Int(val),
         })
     }
 
-    pub fn like(col: &str, val: &str) -> Filter {
-        Filter::Condition(Condition {
+    pub fn like(col: &str, val: &str) -> FilterOperator {
+        FilterOperator::Condition(Condition {
             column: col.into(),
             op: Operator::Like,
             value: FilterValue::String(val.to_string()),

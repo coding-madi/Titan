@@ -16,7 +16,6 @@ pub fn validate_patterns(patterns: &Vec<Pattern>) -> Result<(), RegexError> {
             Pattern::GrokPattern(grok) => {
                 panic!("Grok pattern not implemented yet")
             }
-            _ => return Err(RegexError::RegexIncorrect("Invalid Regex".to_string())),
         }
     }
     Ok(())

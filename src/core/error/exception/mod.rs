@@ -1,4 +1,5 @@
 pub mod actor_errors;
+pub mod buffer_error;
 pub mod flight;
 pub mod iceberg_error;
 pub mod regex;

@@ -1,4 +1,4 @@
-use crate::application::actors::broadcast_actor::RecordBatchWrapper;
+use crate::application::actors::broadcaster::broadcast_actor::RecordBatchWrapper;
 use crate::core::error::exception::regex::RegexError;
 use crate::core::parser::messages::parser::Pattern;
 use std::collections::HashMap;

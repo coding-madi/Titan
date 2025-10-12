@@ -1,14 +1,15 @@
-use std::collections::HashMap;
-use std::sync::Arc;
+use crate::application::actors::broadcaster::broadcast_actor::RecordBatchWrapper;
+use crate::core::rhai::planner::filter::{Condition, FilterOperator, FilterValue, Operator};
+use crate::core::rhai::query_planner::{AggregateOperation, QueryPlanner};
 use arrow::compute;
 use arrow::compute::filter_record_batch;
 use arrow::compute::kernels::{cmp, comparison};
-use arrow_array::{Array, ArrayRef, BooleanArray, Int64Array, RecordBatch, StringArray};
 use arrow_array::builder::{Int64Builder, StringBuilder};
+use arrow_array::{Array, ArrayRef, BooleanArray, Int64Array, RecordBatch, StringArray};
 use arrow_schema::{ArrowError, DataType};
+use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::error;
-use crate::application::actors::broadcast_actor::RecordBatchWrapper;
-use crate::core::rhai::query_planner::{AggregateOperation, Condition, Filter, FilterValue, Operator, QueryPlanner};
 
 pub struct RhaiExecutor {
     flight_name: String,
@@ -30,14 +31,107 @@ impl RhaiExecutor {
         self.record.push(buffer);
     }
 
-    fn build_mask(batch: &RecordBatch, filter: &Filter) -> Result<BooleanArray, ArrowError> {
+    pub fn apply(
+        data: &Vec<RecordBatchWrapper>,
+        planner: QueryPlanner,
+    ) -> Result<Arc<RecordBatch>, ArrowError> {
+        // Apply the filter
+        if let Some(filter_expr) = planner.filter.clone() {
+            // Validate filter has correct columns
+            if !Self::validate_columns_in_vector(
+                data.iter().map(|s| s.get_data()).collect(),
+                &filter_expr,
+            ) {
+                error!("One or more columns in the filter expression are not present in the data.");
+                return Err(ArrowError::InvalidArgumentError(
+                    "One or more columns in the filter expression are not present in the data."
+                        .to_string(),
+                ));
+            }
+            let service = data.iter().map(|s| s.get_flight_name()).last();
+            let start_time = data
+                .iter()
+                .map(|s| s.get_metadata().oldest_timestamp.unwrap())
+                .min()
+                .unwrap();
+            let end_time = data
+                .iter()
+                .map(|s| s.get_metadata().newest_timestamp.unwrap())
+                .max()
+                .unwrap();
+
+            let record_batch =
+                Self::apply_filter(data.first().unwrap().get_data().clone(), &filter_expr)?;
+
+            let grouped_record_batch =
+                Self::group_by_index(record_batch.clone(), planner.group_by.clone());
+
+            let mut key_builder = StringBuilder::new();
+            let mut sum_builder = Int64Builder::new();
+            let mut count_builder = Int64Builder::new();
+            let length = grouped_record_batch.len();
+            let service_ids = repeated_string_array(service.unwrap(), length);
+            let start_times = repeated_int_array(start_time, length);
+            let end_times = repeated_int_array(end_time, length);
+
+            for (key, indices) in grouped_record_batch {
+                key_builder.append_value(&key);
+
+                for (op, col) in &planner.aggregates {
+                    let col_idx = record_batch.schema().index_of(col)?;
+                    let array = record_batch.column(col_idx);
+                    match (op, array.data_type()) {
+                        (AggregateOperation::Sum, DataType::Int64) => {
+                            let arr = array.as_any().downcast_ref::<Int64Array>().unwrap();
+                            let sum: i64 = indices.iter().map(|&i| arr.value(i as usize)).sum();
+                            sum_builder.append_value(sum);
+                        }
+                        (AggregateOperation::Count, DataType::Int64) => {
+                            let arr = array.as_any().downcast_ref::<Int64Array>().unwrap();
+                            let count: i64 =
+                                indices.iter().map(|&i| arr.value(i as usize)).count() as i64;
+                            count_builder.append_value(count);
+                        }
+                        _ => unimplemented!(),
+                    }
+                }
+            }
+
+            let key_array = Arc::new(key_builder.finish()) as ArrayRef;
+            let sum_array = Arc::new(sum_builder.finish()) as ArrayRef;
+
+            let schema = Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("service_id", DataType::Utf8, false),
+                arrow_schema::Field::new("key", DataType::Utf8, false),
+                arrow_schema::Field::new("sum", DataType::Int64, false),
+                arrow_schema::Field::new("start_time", DataType::Int64, false),
+                arrow_schema::Field::new("end_time", DataType::Int64, false),
+            ]));
+
+            let result_batch = RecordBatch::try_new(
+                schema,
+                vec![service_ids, key_array, sum_array, start_times, end_times],
+            )?;
+
+            Ok(Arc::new(result_batch))
+        } else {
+            Err(ArrowError::InvalidArgumentError(
+                "No filter expression provided.".to_string(),
+            ))
+        }
+    }
+
+    fn build_mask(
+        batch: &RecordBatch,
+        filter: &FilterOperator,
+    ) -> Result<BooleanArray, ArrowError> {
         match filter {
-            Filter::Condition(cond) => {
+            FilterOperator::Condition(cond) => {
                 let array_ref =
                     Self::column_as_array(Arc::new(batch.clone()), cond.get_column()).unwrap();
                 Self::apply_condition(array_ref, cond)
             }
-            Filter::And(filters) => {
+            FilterOperator::And(filters) => {
                 let mut masks = filters
                     .iter()
                     .map(|f| Self::build_mask(batch, f))
@@ -48,7 +142,7 @@ impl RhaiExecutor {
                 }
                 Ok(mask)
             }
-            Filter::Or(filters) => {
+            FilterOperator::Or(filters) => {
                 let mut masks = filters
                     .iter()
                     .map(|f| Self::build_mask(batch, f))
@@ -125,82 +219,33 @@ impl RhaiExecutor {
 
     fn apply_filter(
         batch: Arc<RecordBatch>,
-        filter: &Filter,
+        filter: &FilterOperator,
     ) -> Result<Arc<RecordBatch>, ArrowError> {
         Self::build_mask(&batch, filter).and_then(|mask| Self::filter_with_mask(&batch, &mask))
     }
 
-    fn validate_columns(batch: Arc<RecordBatch>, filter: &Filter) -> bool {
+    fn validate_columns_in_vector(batches: Vec<Arc<RecordBatch>>, filter: &FilterOperator) -> bool {
+        let mut is_col_valid = true;
+        for batch in batches {
+            if !Self::validate_columns(batch, filter) {
+                is_col_valid = false;
+            }
+        }
+        is_col_valid
+    }
+
+    fn validate_columns(batch: Arc<RecordBatch>, filter: &FilterOperator) -> bool {
         match filter {
-            Filter::Condition(condition) => {
+            FilterOperator::Condition(condition) => {
                 batch.schema().field_with_name(&condition.column).is_ok()
             }
-            Filter::And(filters) | Filter::Or(filters) => filters
+            FilterOperator::And(filters) | FilterOperator::Or(filters) => filters
                 .iter()
                 .all(|f| Self::validate_columns(batch.clone(), f)),
         }
     }
 
-    pub fn apply(data: RecordBatchWrapper, planner: QueryPlanner) -> Result<Arc<RecordBatch>, ArrowError> {
-        // Apply the filter
-        if let Some(filter_expr) = planner.filter.clone() {
-            // Validate filter has correct columns
-            if !Self::validate_columns(data.get_data().clone(), &filter_expr) {
-                error!("One or more columns in the filter expression are not present in the data.");
-                return Err(ArrowError::InvalidArgumentError(
-                    "One or more columns in the filter expression are not present in the data."
-                        .to_string(),
-                ));
-            }
-            let record_batch = Self::apply_filter(data.get_data().clone(), &filter_expr)?;
-
-            let grouped_record_batch = Self::group_by_index(
-                record_batch.clone(),
-                planner.group_by.clone(),
-            );
-
-            let mut key_builder = StringBuilder::new();
-            let mut sum_builder = Int64Builder::new();
-
-            for (key, indices) in grouped_record_batch {
-                key_builder.append_value(&key);
-
-                for (op, col) in &planner.aggregates {
-                    let col_idx = record_batch.schema().index_of(col)?;
-                    let array = record_batch.column(col_idx);
-                    match (op, array.data_type()) {
-                        (AggregateOperation::Sum, DataType::Int64) => {
-                            let arr = array.as_any().downcast_ref::<Int64Array>().unwrap();
-                            let sum: i64 = indices.iter().map(|&i| arr.value(i as usize)).sum();
-                            sum_builder.append_value(sum);
-                        }
-                        _ => unimplemented!(),
-                    }
-                }
-            }
-
-            let key_array = Arc::new(key_builder.finish()) as ArrayRef;
-            let sum_array = Arc::new(sum_builder.finish()) as ArrayRef;
-
-            let schema = Arc::new(arrow_schema::Schema::new(vec![
-                arrow_schema::Field::new("key", DataType::Utf8, false),
-                arrow_schema::Field::new("sum", DataType::Int64, false),
-            ]));
-
-            let result_batch = RecordBatch::try_new(schema, vec![key_array, sum_array])?;
-
-            Ok(Arc::new(result_batch))
-        } else {
-            Err(ArrowError::InvalidArgumentError(
-                "No filter expression provided.".to_string(),
-            ))
-        }
-    }
-
-    fn group_by_index(
-        batch: Arc<RecordBatch>,
-        group_by: Vec<String>,
-    ) -> HashMap<String, Vec<i64>> {
+    fn group_by_index(batch: Arc<RecordBatch>, group_by: Vec<String>) -> HashMap<String, Vec<i64>> {
         let keys: Vec<ArrayRef> = group_by
             .iter()
             .map(|name| batch.column(batch.schema().index_of(name).unwrap()).clone())
@@ -229,3 +274,12 @@ impl RhaiExecutor {
     }
 }
 
+fn repeated_string_array(value: &str, len: usize) -> ArrayRef {
+    let repeated = std::iter::repeat(value).take(len);
+    Arc::new(StringArray::from_iter_values(repeated)) as ArrayRef
+}
+
+fn repeated_int_array(value: i64, len: usize) -> ArrayRef {
+    let repeated = std::iter::repeat(value).take(len);
+    Arc::new(Int64Array::from_iter_values(repeated)) as ArrayRef
+}

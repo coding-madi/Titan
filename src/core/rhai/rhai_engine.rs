@@ -22,8 +22,6 @@ impl RhaiEngine {
             q
         "#;
 
-        //             q.window(300, "seconds");               // 5-min window
-
         // compile & run it
         let engine = execution_engine();
         let rhai_engine = RhaiEngine::new(engine);

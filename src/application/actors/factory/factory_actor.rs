@@ -1,15 +1,17 @@
-use crate::application::actors::broadcast_actor::BroadcastActor;
+use crate::application::actors::broadcaster::broadcast_actor::BroadcastActor;
 #[cfg(test)]
 use crate::application::actors::factory::factory_actor::tests::MockFactoryActor;
+use crate::application::actors::messages::registeration::{CreateParserActor, CreateRhaiActor};
 #[cfg(test)]
-use crate::application::actors::parser_actor::MockParsingActor;
+use crate::application::actors::parser::parser_actor::MockParsingActor;
+use crate::application::actors::rhai::rhai_actor::{RhaiActor, RhaiActorAddr};
 use crate::application::service::parser_service::ParserService;
 use crate::core::parser::parser_contract::ParserType;
 use crate::core::parser::rust_regex_engine::RustRegexEngine;
 use crate::platform::registry::{ParserActor, ParserActorAddr, Registry};
 use actix::{Actor, Addr, AsyncContext, Handler, Message};
-use log::info;
 use std::sync::Arc;
+use tracing::info;
 
 #[derive(Clone, Message, Debug)]
 #[rtype(result = "()")]
@@ -60,19 +62,13 @@ impl Handler<CreateBroadcastActor> for FactoryActor {
     }
 }
 
-#[derive(Message)]
-#[rtype(result = "Vec<ParserActorAddr>")]
-pub struct CreateParserActor {
-    pub flight_name: String,
-    pub count: usize,
-    pub parser_type: ParserType,
-}
-
 impl Handler<CreateParserActor> for FactoryActor {
     type Result = Vec<ParserActorAddr>;
 
     fn handle(&mut self, msg: CreateParserActor, _ctx: &mut Self::Context) -> Self::Result {
         let mut result = vec![];
+        info!("Creating {} parser actors", msg.count);
+        let rhai_actor = msg.rhai_actor.clone();
         for _ in 0..msg.count {
             let parsing_actor = ParserActorAddr::Real(match msg.parser_type {
                 ParserType::RUSTREGEX => {
@@ -80,8 +76,10 @@ impl Handler<CreateParserActor> for FactoryActor {
                         msg.flight_name.clone(),
                         self.registry.clone(),
                         Arc::new(RustRegexEngine {}),
+                        Some(msg.rhai_actor.clone()),
                     );
-                    ParserActor::new(parser_service).start()
+                    ParserActor::new(msg.flight_name.clone(), parser_service, rhai_actor.clone())
+                        .start()
                 }
                 ParserType::Grok => {
                     unimplemented!()
@@ -99,10 +97,17 @@ impl Handler<CreateParserActor> for FactoryActor {
     }
 }
 
+impl Handler<CreateRhaiActor> for FactoryActor {
+    type Result = Addr<RhaiActor>;
+
+    fn handle(&mut self, msg: CreateRhaiActor, _ctx: &mut Self::Context) -> Self::Result {
+        RhaiActor::new(msg.flight_name, self.registry.clone()).start()
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::application::actors::wal_actor::MockWalActor;
     use actix::Context;
     use tracing::info;
 

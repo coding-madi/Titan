@@ -1,4 +1,5 @@
-use crate::core::rhai::query_planner::{Filter, QueryPlanner};
+use crate::core::rhai::planner::filter::FilterOperator;
+use crate::core::rhai::query_planner::QueryPlanner;
 use rhai::{Array, Engine};
 
 /// Engine with all the user-defined types and functions registered
@@ -14,22 +15,31 @@ impl EngineBuilder {
     }
 
     fn with_filter(mut self) -> Self {
-        self.engine.register_type_with_name::<Filter>("Filter");
+        self.engine
+            .register_type_with_name::<FilterOperator>("Filter");
+
+        self.engine.register_fn(
+            "filter",
+            |q: QueryPlanner, f: FilterOperator| -> QueryPlanner { q.filter(f) },
+        );
 
         self.engine
-            .register_fn("filter", |q: QueryPlanner, f: Filter| -> QueryPlanner {
-                q.filter(f)
+            .register_fn("and", |filters: Array| -> FilterOperator {
+                let fs: Vec<FilterOperator> = filters
+                    .into_iter()
+                    .map(|d| d.cast::<FilterOperator>())
+                    .collect();
+                FilterOperator::And(fs)
             });
 
-        self.engine.register_fn("and", |filters: Array| -> Filter {
-            let fs: Vec<Filter> = filters.into_iter().map(|d| d.cast::<Filter>()).collect();
-            Filter::And(fs)
-        });
-
-        self.engine.register_fn("or", |filters: Array| -> Filter {
-            let fs: Vec<Filter> = filters.into_iter().map(|d| d.cast::<Filter>()).collect();
-            Filter::Or(fs)
-        });
+        self.engine
+            .register_fn("or", |filters: Array| -> FilterOperator {
+                let fs: Vec<FilterOperator> = filters
+                    .into_iter()
+                    .map(|d| d.cast::<FilterOperator>())
+                    .collect();
+                FilterOperator::Or(fs)
+            });
         self
     }
 
@@ -46,8 +56,6 @@ impl EngineBuilder {
             .register_type_with_name::<QueryPlanner>("QueryPlanner");
 
         self.engine.register_fn("query", || QueryPlanner::new());
-
-
 
         self.engine.register_fn(
             "agg",
@@ -82,5 +90,6 @@ pub fn execution_engine() -> Engine {
     EngineBuilder::new()
         .with_filter()
         .comparison_operator()
-        .with_query_plan().build()
+        .with_query_plan()
+        .build()
 }

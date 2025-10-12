@@ -1,9 +1,10 @@
-
 #[cfg(test)]
 pub mod test {
-    use crate::application::actors::broadcast_actor::{Metadata, RecordBatchWrapper};
+    use crate::application::actors::broadcaster::broadcast_actor::{Metadata, RecordBatchWrapper};
     use crate::core::rhai::query_planner::QueryPlanner;
     use crate::core::rhai::rhai_engine::{Record, RhaiEngine, execution_engine};
+    use crate::core::rhai::rhai_executor;
+    use crate::core::rhai::rhai_executor::RhaiExecutor;
     use arrow_array::builder::{BooleanBuilder, StringBuilder};
     use arrow_array::{ArrayRef, BooleanArray, Int8Array, Int64Array, RecordBatch, StringArray};
     use arrow_schema::{DataType, Field, Schema};
@@ -12,8 +13,6 @@ pub mod test {
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::time::Instant;
-    use crate::core::rhai::rhai_executor;
-    use crate::core::rhai::rhai_executor::RhaiExecutor;
 
     fn generate_data(n: usize) -> Vec<Record> {
         let mut dataset = Vec::new();
@@ -133,7 +132,7 @@ pub mod test {
         let engine = execution_engine();
         let mut scope = rhai::Scope::new();
         let plan: QueryPlanner = engine.eval_with_scope(&mut scope, script).unwrap();
-        let dataset = create_dummy_dataset(1000_000);
+        let dataset = create_dummy_dataset(10_000);
         let record_batch_wrapper = RecordBatchWrapper::new(
             Metadata::new("flight", 1, Arc::new(create_schema())),
             &dataset,

@@ -1,14 +1,13 @@
-// Changed from SyncContext
-
+use crate::application::actors::database::handler::pattern::GetPatternsForTenant;
+pub use crate::application::actors::database::handler::repo_ready::ReposReady;
+use crate::application::actors::database::handler::schema::SaveSchema;
 use crate::config::database_conf::DatabaseConf;
 use crate::core::db::factory::database_factory::RepositoryProvider;
-use crate::core::db::repository::Schema;
 use crate::platform::registry::Registry;
-use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, spawn};
+use actix::{Actor, Addr, AsyncContext, Context, Message, spawn};
 use async_trait::async_trait;
 use log::trace;
 use std::sync::Arc;
-use tracing::log::info;
 
 #[derive(Clone, Message, Debug)]
 #[rtype(result = "()")]
@@ -62,7 +61,7 @@ impl DbActorAddr {
 /// with various database repositories in a decoupled manner.
 #[derive(Clone)]
 pub struct DbActor {
-    repos: Arc<dyn RepositoryProvider>,
+    pub(crate) repos: Arc<dyn RepositoryProvider>,
     pub registry: Addr<Registry>,
 }
 
@@ -91,7 +90,7 @@ impl Actor for DbActor {
 
     /// Called when the actor starts.
     ///
-    /// In this method, the `DbActor` sends a `ReposReady` message to itself. This
+    /// In this method, the `DbActor` sends a `ReposReady` handler to itself. This
     /// asynchronous initialization ensures that the `repos` field is properly
     /// set up within the actor's context, even though it's already available
     /// from the `new` constructor. This pattern can be useful for more complex
@@ -111,109 +110,9 @@ impl Actor for DbActor {
     }
 }
 
-/// A message sent to `DbActor` to signal that the `RepositoryProvider` is ready.
-/// This is primarily used during the actor's startup phase (`started` method)
-/// to ensure the `repos` field is properly established within the actor's context.
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct ReposReady {
-    pub repos: Arc<dyn RepositoryProvider + Send + Sync>,
-}
-
-impl Handler<ReposReady> for DbActor {
-    type Result = ();
-
-    /// Handles the `ReposReady` message.
-    ///
-    /// This method updates the actor's internal `repos` field with the provided
-    /// `RepositoryProvider`. While `repos` is already set during `new`, this handler
-    /// could be extended to perform additional readiness checks or logging once
-    /// the actor is fully operational.
-    fn handle(&mut self, msg: ReposReady, _ctx: &mut Self::Context) -> Self::Result {
-        self.repos = msg.repos;
-    }
-}
-
-/// A message to request patterns associated with a specific tenant.
+/// A handler to request a schema from the database.
 ///
-/// The `_tenant` field holds the identifier for the tenant whose patterns are being requested.
-pub struct GetPatternsForTenant {
-    _tenant: String,
-}
-
-impl Message for GetPatternsForTenant {
-    type Result = Vec<String>;
-}
-
-impl Handler<GetPatternsForTenant> for DbActor {
-    type Result = Vec<String>;
-
-    /// Handles the `GetPatternsForTenant` message.
-    ///
-    /// Currently, this handler returns an empty `Vec`. In a real-world scenario,
-    /// it would interact with a repository (e.g., `tenant_repository()`) to fetch
-    /// and return the actual patterns for the given tenant.
-    ///
-    /// # Arguments
-    ///
-    /// * `_msg` - The `GetPatternsForTenant` message containing the tenant identifier.
-    /// * `_ctx` - The actor's context (unused in this handler).
-    fn handle(&mut self, _msg: GetPatternsForTenant, _ctx: &mut Self::Context) -> Self::Result {
-        vec![]
-    }
-}
-
-/// A message to save a new schema definition to the database.
-///
-/// This message carries all necessary information to persist an `Arrow` schema
-/// along with associated metadata.
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct SaveSchema {
-    pub flight_name: String,
-    pub schema: Arc<arrow::datatypes::Schema>,
-    pub created_at: chrono::NaiveDateTime,
-    pub updated_at: chrono::NaiveDateTime,
-}
-
-#[async_trait]
-impl Handler<SaveSchema> for DbActor {
-    type Result = ();
-
-    /// Handles the `SaveSchema` message.
-    ///
-    /// This method clones the `RepositoryProvider` and spawns a `tokio` task to
-    /// asynchronously insert the schema into the database. This prevents the
-    /// actor's main thread from blocking while waiting for database I/O.
-    ///
-    /// # Arguments
-    ///
-    /// * `arrow_schema` - The `SaveSchema` message containing the schema details.
-    /// * `_ctx` - The actor's context (unused in this handler).
-    fn handle(&mut self, arrow_schema: SaveSchema, _ctx: &mut Self::Context) -> Self::Result {
-        info!("Inside the database actor:");
-        let flight_name = arrow_schema.flight_name;
-        let schema = arrow_schema.schema;
-        let repos = self.repos.clone(); // ✅ this works now
-        tokio::spawn(async move {
-            let schema = Schema {
-                flight_name,
-                schema,
-                created_at: Default::default(),
-                updated_at: Default::default(),
-            };
-            repos
-                .schema_repository()
-                .insert_schema(schema)
-                .await
-                .expect("TODO: panic message");
-        });
-    }
-}
-
-/// A message to request a schema from the database.
-///
-/// This message needs to be extended to include parameters (e.g., `flight_name`)
+/// This handler needs to be extended to include parameters (e.g., `flight_name`)
 /// to specify which schema to retrieve.
 #[derive(Message)]
 #[rtype(result = "()")]
@@ -249,27 +148,5 @@ impl Actor for MockDbActor {
     fn started(&mut self, ctx: &mut Self::Context) {
         self.registry_address
             .do_send(DbActorAddr::Mock(ctx.address()));
-    }
-}
-
-#[cfg(test)]
-impl Handler<ReposReady> for MockDbActor {
-    type Result = ();
-    fn handle(&mut self, _msg: ReposReady, _: &mut Self::Context) -> Self::Result {}
-}
-
-#[cfg(test)]
-impl Handler<SaveSchema> for MockDbActor {
-    type Result = ();
-    fn handle(&mut self, _: SaveSchema, _: &mut Self::Context) -> Self::Result {
-        todo!()
-    }
-}
-
-#[cfg(test)]
-impl Handler<GetPatternsForTenant> for MockDbActor {
-    type Result = Vec<String>;
-    fn handle(&mut self, _: GetPatternsForTenant, _: &mut Self::Context) -> Self::Result {
-        todo!()
     }
 }

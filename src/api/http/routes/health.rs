@@ -32,7 +32,7 @@ use utoipa::ToSchema;
     get,
     path = "/health",
     responses(
-        (status = 200, description = "Return a success message", body = Health, example = "{\"status\": \"OK\"}"),
+        (status = 200, description = "Return a success handler", body = Health, example = "{\"status\": \"OK\"}"),
         (status = 500, description = "Internal server error", body = Health, example =  "{\"status\": \"FAILED\"}"),
     )
 )]

@@ -1,3 +1,4 @@
+pub mod database_server;
 pub mod full_server;
 pub mod injest_server;
 pub mod query_server;

@@ -1,15 +1,14 @@
-use crate::application::actors::broadcast_actor::RecordBatchWrapper;
-use crate::application::actors::iceberg_actor::{IcebergActor, IcebergActorAddr};
-use crate::application::actors::parser_actor::TryParsingRegex;
-use crate::application::actors::rhai_actor::RhaiActor;
-use crate::application::actors::wal_actor::WalActorWrapper;
+use crate::application::actors::broadcaster::broadcast_actor::RecordBatchWrapper;
+use crate::application::actors::iceberg::iceberg_actor::{IcebergActor, IcebergActorAddr};
+use crate::application::actors::parser::handlers::try_parsing_regex::TryParsingRegex;
+use crate::application::actors::rhai::rhai_actor::RhaiActor;
+use crate::application::actors::wal::log::log_wal_actor::WalActorWrapper;
+use crate::core::error::exception::buffer_error::BufferError;
 use crate::core::error::exception::regex::RegexError;
 use crate::core::parser::messages::parser::Pattern;
 use crate::core::parser::parser_contract::ParserContract;
 use crate::core::utils::arrow::arrow_buffer_to_json;
-use crate::platform::registry::{
-    FetchIcebergActor, FetchWalActor, ParserActor, ParserActorAddr, Registry,
-};
+use crate::platform::registry::{FetchIcebergActor, FetchWalActor, Registry};
 use actix::Addr;
 use futures_util::future;
 use log::error;
@@ -17,11 +16,10 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::SystemTime;
-use tracing::{info, trace};
 
 #[derive(Clone)]
 pub struct ParserService {
+    #[allow(dead_code, unused_imports)]
     flight_name: String,
     patterns: HashMap<String, Vec<Pattern>>, // log_group → patterns
     registry_address: Addr<Registry>,
@@ -34,12 +32,13 @@ impl ParserService {
         flight_name: String,
         registry_address: Addr<Registry>,
         parser_engine: Arc<dyn ParserContract + Send + Sync + 'static>,
+        rhai_meter_actor: Option<Addr<RhaiActor>>,
     ) -> Self {
         Self {
             flight_name,
             patterns: HashMap::new(),
             registry_address,
-            rhai_meter_actor: None,
+            rhai_meter_actor,
             parser_engine,
         }
     }
@@ -48,6 +47,7 @@ impl ParserService {
         flight_name: String,
         registry_address: Addr<Registry>,
         parser_engine: Arc<dyn ParserContract + Send + Sync + 'static>,
+        rhai_meter_actor: Option<Addr<RhaiActor>>,
     ) -> Self {
         // let patterns = get_patterns_from_database(&flight_name);
         let patterns = HashMap::new();
@@ -55,15 +55,9 @@ impl ParserService {
             flight_name,
             patterns,
             registry_address,
-            rhai_meter_actor: None,
+            rhai_meter_actor,
             parser_engine,
         }
-    }
-
-    pub fn register_parser_actor(&mut self, parser_actor: Addr<ParserActor>) {
-        let registry_address = self.registry_address.clone();
-        registry_address.do_send(ParserActorAddr::Real(parser_actor));
-        trace!("Parser actor started");
     }
 
     pub fn get_registry_address(&self) -> Addr<Registry> {
@@ -79,6 +73,7 @@ impl ParserService {
         let parser_engine = self.parser_engine.clone();
         let flight_id = message.get_flight_name().to_string();
         let patterns = self.patterns.clone();
+        let rhai_actor = self.rhai_meter_actor.clone();
 
         Box::pin(async move {
             // 1. Fetch actors
@@ -93,16 +88,21 @@ impl ParserService {
                 None => return,
             };
 
-            // 2. Send to Iceberg
             if let Err(e) = iceberg_actor.send(message.clone()).await {
                 error!("Failed to send record to IcebergActor: {:?}", e);
             }
-
-            // 3. Spawn async parse task
-            Self::spawn_parse_task(parser_engine, message.clone(), patterns);
-
-            // 4. Forward to WAL
-            Self::send_to_wal(wal_actor, message);
+            if let Ok(result) =
+                Self::spawn_parse_task(parser_engine, message.clone(), patterns).await
+            {
+                for record in result {
+                    Self::send_to_wal(wal_actor.clone(), record.clone());
+                    if let Some(rhai_address) = rhai_actor.clone() {
+                        rhai_address.do_send(record);
+                    }
+                }
+            } else {
+                error!("Failed to parse record: {:?}", message);
+            }
         })
     }
 
@@ -132,20 +132,13 @@ impl ParserService {
         }
     }
 
-    fn spawn_parse_task(
+    async fn spawn_parse_task(
         parser_engine: Arc<dyn ParserContract + Send + Sync>,
         message: RecordBatchWrapper,
         patterns: HashMap<String, Vec<Pattern>>,
-    ) {
-        actix_rt::spawn(async move {
-            let start = SystemTime::now();
-            let result = parser_engine.parse(vec![message.clone()], patterns, false);
-            let elapsed = start.elapsed().unwrap_or_default();
-            match &result {
-                Ok(_) => info!("Parsed successfully in {}ms", elapsed.as_millis()),
-                Err(e) => error!("Parsing failed: {:?}", e),
-            }
-        });
+    ) -> Result<Vec<RecordBatchWrapper>, RegexError> {
+        let result = parser_engine.parse(vec![message.clone()], patterns, false);
+        result
     }
 
     fn send_to_wal(wal: WalActorWrapper, message: RecordBatchWrapper) {
@@ -183,24 +176,25 @@ impl ParserService {
                 let future = iceberg_actor.get_buffer(flight_name);
                 futures.push(future);
             }
-            let results: Vec<Result<Vec<RecordBatchWrapper>, core::fmt::Error>> =
+
+            let results: Vec<Result<Vec<RecordBatchWrapper>, BufferError>> =
                 future::join_all(futures).await;
 
-            let flattened: Result<Vec<RecordBatchWrapper>, core::fmt::Error> = results
+            let flattened: Result<Vec<RecordBatchWrapper>, BufferError> = results
                 .into_iter()
                 .collect::<Result<Vec<_>, _>>() // Result<Vec<Vec<_>>, fmt::Error>
-                .map(|vecs| vecs.into_iter().flatten().collect());
+                .map(|nested_vectors| nested_vectors.into_iter().flatten().collect());
 
             if let Ok(records) = flattened {
                 let mut map = HashMap::new();
                 map.insert(msg.log_group.clone(), msg.pattern.clone());
                 let results = parser_engine.parse(records, map, false);
                 let record = results.unwrap();
-                let x = match record.first() {
-                    Some(x) => x,
+                let record_batch_wrapper = match record.first() {
+                    Some(record_batch_wrapper) => record_batch_wrapper,
                     None => return Ok(Value::Null),
                 };
-                let json = arrow_buffer_to_json(x.get_data().as_ref());
+                let json = arrow_buffer_to_json(record_batch_wrapper.get_data().as_ref());
 
                 return Ok(Value::Array(json));
             } else {

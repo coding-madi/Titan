@@ -1,9 +1,8 @@
 use crate::api::http::messages::regex_messages::RegexHttpRequest;
-use crate::application::actors::flight_registry_actor::{
-    CheckFlight, FlightRegistryActorWrapped, ListFlights,
-};
-use crate::application::actors::parser_actor::SubmitRegexRequest;
-use crate::core::error::exception::actor_errors::ErrorType;
+use crate::application::actors;
+use crate::application::actors::flight_registry::flight_registry_actor::FlightRegistryActorWrapped;
+use crate::application::actors::flight_registry::handler::flight::{CheckFlight, ListFlights};
+use crate::application::actors::parser::parser_actor::SubmitRegexRequest;
 use crate::core::utils::flight::validate_if_flight_exists;
 use crate::core::utils::regex::validate_patterns;
 use crate::platform::registry::{FetchBroadcastActor, FetchFlightRegistryActor, Registry};
@@ -13,15 +12,12 @@ use actix_web::web::{Data, Path};
 use actix_web::{HttpResponse, Resource, Responder, web};
 use futures_util::SinkExt;
 use serde_derive::Serialize;
+use serde_json::json;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{info, warn};
 use utoipa::ToSchema;
 use validator::Validate;
-
-/// ========== Errors ==========
-
-impl std::error::Error for ErrorType {}
 
 /// ========== Handlers ==========
 
@@ -105,6 +101,7 @@ async fn submit_new_pattern_to_broadcast_actor(
     }
 }
 
+#[allow(dead_code, unused_imports)]
 async fn check_if_flight_exists<F>(
     flight_registry_actor: Addr<F>,
     flight: String,

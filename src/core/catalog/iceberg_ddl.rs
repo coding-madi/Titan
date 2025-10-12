@@ -9,22 +9,21 @@ use std::sync::Arc;
 // Load table
 // Create table
 pub async fn create_namespace(
-    catalog: Arc<tokio::sync::Mutex<RestCatalog>>,
+    catalog: Arc<RestCatalog>,
     namespace: &str,
 ) -> Result<Namespace, IcebergError> {
     let namespace_ident = NamespaceIdent::from_vec(vec![namespace.to_string()]).unwrap();
-    let catalog_guard = catalog.lock().await;
-    if catalog_guard
+    if catalog
         .namespace_exists(&namespace_ident)
         .await
         .unwrap_or(false)
     {
-        catalog_guard
+        catalog
             .get_namespace(&namespace_ident)
             .await
             .map_err(|e| IcebergError::StorageError(e.to_string()))
     } else {
-        catalog_guard
+        catalog
             .create_namespace(&namespace_ident, Default::default())
             .await
             .map_err(|e| IcebergError::StorageError(e.to_string()))
@@ -32,7 +31,7 @@ pub async fn create_namespace(
 }
 
 pub async fn create_table(
-    catalog: Arc<tokio::sync::Mutex<RestCatalog>>,
+    catalog: Arc<RestCatalog>,
     namespace: &str,
     table: &str,
     schema: Arc<Schema>,
@@ -44,8 +43,7 @@ pub async fn create_table(
         .build();
     let namespace_ident = NamespaceIdent::from_vec(vec![namespace.to_string()]).unwrap();
 
-    let catalog_guard = catalog.lock().await;
-    catalog_guard
+    catalog
         .create_table(&namespace_ident, table_build)
         .await
         .map_err(|e| IcebergError::StorageError(e.to_string()))

@@ -1,4 +1,7 @@
 use crate::application::service::ingest_service::InjestService;
+use crate::monitor::prometheus::registry::{
+    ACTIVE_SESSIONS, COUNTER, JOB_LATENCY_HISTOGRAM, REGISTRY,
+};
 use actix::dev::Stream;
 use arrow_flight::{
     Action, ActionType, Criteria, Empty, FlightData, FlightDescriptor, FlightInfo,
@@ -133,6 +136,7 @@ impl FlightService for LogFlightServer {
     }
 
     type DoExchangeStream = Pin<Box<dyn Stream<Item = Result<FlightData, Status>> + Send>>;
+
     async fn do_exchange(
         &self,
         _request: Request<Streaming<FlightData>>,
@@ -148,7 +152,9 @@ impl FlightService for LogFlightServer {
     ) -> Result<Response<Self::DoActionStream>, Status> {
         unimplemented!()
     }
+
     type ListActionsStream = Pin<Box<dyn Stream<Item = Result<ActionType, Status>> + Send>>;
+
     async fn list_actions(
         &self,
         _request: Request<Empty>,

@@ -12,7 +12,7 @@ post {
 
 body:json {
   {
-    "sql": "select * from log limit 200",
+    "sql": "select count(*) from log limit 200",
     "stream_name": "log"
   }
 }

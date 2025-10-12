@@ -6,8 +6,23 @@ import random
 import string
 import datetime
 from decimal import Decimal, getcontext
+import json
 
 getcontext().prec = 18
+
+def dump_single_batch_to_json(filename: str, target_mb: int = 100):
+    schema = make_schema()
+    rows_per_batch = estimate_rows_for_batch(schema, target_mb)
+    table = generate_complex_batch(rows_per_batch, schema)
+
+    # Convert Arrow Table → list of dicts
+    data = table.to_pydict()
+    rows = [dict(zip(data.keys(), values)) for values in zip(*data.values())]
+
+    with open(filename, "w") as f:
+        json.dump(rows, f, indent=2, default=str)  # default=str handles Decimal + datetime
+
+    print(f"✅ Wrote {rows_per_batch} rows ({table.nbytes / (1024*1024):.2f} MB) to {filename} in JSON format")
 
 
 def random_string(length=50):
@@ -200,4 +215,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    #dump_single_batch_to_json("sample_batch.json", target_mb=100)  # smaller target for easier JSON
     asyncio.run(main())

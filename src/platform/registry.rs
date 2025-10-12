@@ -1,34 +1,30 @@
 use actix::{Actor, Handler, Message};
+use std::collections::HashMap;
 use std::io::Error;
-use tracing::error;
 use tracing::log::trace;
+use tracing::{error, info};
 
 // Core Actor imports
-use crate::application::actors::broadcast_actor::BroadcastActorWrapper;
-use crate::application::actors::db_actor::{DbActor, DbActorAddr};
-use crate::application::actors::flight_registry_actor::{
+use crate::application::actors::broadcaster::broadcast_actor::BroadcastActorWrapper;
+use crate::application::actors::database::db_actor::{DbActor, DbActorAddr};
+use crate::application::actors::flight_registry::flight_registry_actor::{
     FlightRegistry, FlightRegistryActorWrapped,
 };
-use crate::application::actors::iceberg_actor::{IcebergActor, IcebergActorAddr};
-pub(crate) use crate::application::actors::parser_actor::{ParserActor, ParserActorAddr};
-use crate::application::actors::wal_actor::{WalActor, WalActorWrapper};
+use crate::application::actors::iceberg::iceberg_actor::{IcebergActor, IcebergActorAddr};
+pub(crate) use crate::application::actors::parser::parser_actor::{ParserActor, ParserActorAddr};
 
 // Test-only mock imports
 #[cfg(test)]
-use crate::application::actors::broadcast_actor::MockBroadcastActor;
-#[cfg(test)]
-use crate::application::actors::db_actor::MockDbActor;
+use crate::application::actors::database::db_actor::MockDbActor;
 #[cfg(test)]
 use crate::application::actors::factory::factory_actor::tests::MockFactoryActor;
 use crate::application::actors::factory::factory_actor::{FactoryActor, FactoryActorAddr};
 #[cfg(test)]
-use crate::application::actors::flight_registry_actor::MockFlightRegistry;
+use crate::application::actors::flight_registry::flight_registry_actor::MockFlightRegistry;
 #[cfg(test)]
-use crate::application::actors::iceberg_actor::MockIcebergActor;
-#[cfg(test)]
-use crate::application::actors::parser_actor::MockParsingActor;
-#[cfg(test)]
-use crate::application::actors::wal_actor::MockWalActor;
+use crate::application::actors::iceberg::iceberg_actor::MockIcebergActor;
+use crate::application::actors::messages::registeration::ParserActorReady;
+use crate::application::actors::rhai::rhai_actor::{RhaiActorAddr};
 use crate::core::error::exception::registry::RegistryError;
 
 // Registry struct
@@ -37,10 +33,15 @@ pub struct Registry {
     pub db_actor_addr: DbActorAddr,
     pub flight_registry_actor_addr: FlightRegistryActorWrapped,
     pub iceberg_actor_addr: IcebergActorAddr,
+    pub iceberg_meter_actor_addr: IcebergActorAddr, // Meter actor
     pub wal_actor_addr: WalActorWrapper,
-    pub parser_actor_addr: Option<ParserActorAddr>, // This actor is created dynamically based on the arrow stream
+    pub wal_metric_actor_addr: WalMetricActorWrapper,
     pub factory_actor: FactoryActorAddr,
-    pub broadcast_actor: Option<BroadcastActorWrapper>, // This actor is created dynamically based on the arrow stream
+
+    // dynamic actors, created 1 per flight
+    pub broadcast_actor: HashMap<String, BroadcastActorWrapper>, // This actor is created dynamically based on the arrow stream
+    pub parser_actor_addr: HashMap<String, Vec<ParserActorAddr>>, // This actor is created dynamically based on the arrow stream
+    pub rhai_actor: HashMap<String, RhaiActorAddr>,
 }
 
 // Registry Builder
@@ -48,11 +49,21 @@ pub struct RegistryBuilder {
     db_actor_addr: Option<DbActorAddr>,
     flight_registry_actor_addr: Option<FlightRegistryActorWrapped>,
     iceberg_actor_addr: Option<IcebergActorAddr>,
+    iceberg_meter_actor_addr: Option<IcebergActorAddr>,
     wal_actor_addr: Option<WalActorWrapper>,
-    parser_actor_addr: Option<ParserActorAddr>,
+    wal_metric_actor_addr: Option<WalMetricActorWrapper>,
     factory_actor_addr: Option<FactoryActorAddr>,
-    broadcast_actor: Option<BroadcastActorWrapper>,
+
+    // dynamic actors, created 1 per flight
+    broadcast_actor: HashMap<String, BroadcastActorWrapper>,
+    parser_actor_addr: HashMap<String, Vec<ParserActorAddr>>,
+    rhai_actor: HashMap<String, RhaiActorAddr>,
 }
+
+#[cfg(test)]
+use crate::application::actors::wal::log::log_wal_actor::MockWalActor;
+#[cfg(test)]
+use crate::application::actors::wal::metric::metric_wal_actor::tests::MockWalMetricActor;
 
 impl RegistryBuilder {
     pub fn new() -> Self {
@@ -60,10 +71,13 @@ impl RegistryBuilder {
             db_actor_addr: None,
             flight_registry_actor_addr: None,
             iceberg_actor_addr: None,
+            iceberg_meter_actor_addr: None,
             wal_actor_addr: None,
-            parser_actor_addr: None,
+            wal_metric_actor_addr: None,
             factory_actor_addr: None,
-            broadcast_actor: None,
+            broadcast_actor: HashMap::new(),
+            parser_actor_addr: HashMap::new(),
+            rhai_actor: HashMap::new(),
         }
     }
 
@@ -104,6 +118,18 @@ impl RegistryBuilder {
     }
 
     #[cfg(not(test))]
+    pub fn iceberg_meter_actor(mut self, meter_actor: IcebergActor) -> Self {
+        self.iceberg_meter_actor_addr = Some(IcebergActorAddr::Real(meter_actor.start()));
+        self
+    }
+
+    #[cfg(test)]
+    pub fn iceberg_meter_actor(mut self, meter_actor: MockIcebergActor) -> Self {
+        self.iceberg_meter_actor_addr = Some(IcebergActorAddr::Mock(meter_actor.start()));
+        self
+    }
+
+    #[cfg(not(test))]
     pub fn wal_actor(mut self, actor: WalActor) -> Self {
         self.wal_actor_addr = Some(WalActorWrapper::Real(actor.start()));
         self
@@ -112,6 +138,18 @@ impl RegistryBuilder {
     #[cfg(test)]
     pub fn wal_actor(mut self, actor: MockWalActor) -> Self {
         self.wal_actor_addr = Some(WalActorWrapper::Mock(actor.start()));
+        self
+    }
+
+    #[cfg(not(test))]
+    pub fn wal_metric_actor(mut self, actor: WalMetricActor) -> Self {
+        self.wal_metric_actor_addr = Some(WalMetricActorWrapper::Real(actor.start()));
+        self
+    }
+
+    #[cfg(test)]
+    pub fn wal_metric_actor(mut self, actor: MockWalMetricActor) -> Self {
+        self.wal_metric_actor_addr = Some(WalMetricActorWrapper::Mock(actor.start()));
         self
     }
 
@@ -136,12 +174,19 @@ impl RegistryBuilder {
             iceberg_actor_addr: self
                 .iceberg_actor_addr
                 .expect("iceberg_actor_addr must be set"),
+            iceberg_meter_actor_addr: self
+                .iceberg_meter_actor_addr
+                .expect("iceberg_meter_actor_addr must be set"),
             wal_actor_addr: self.wal_actor_addr.expect("wal_actor_addr must be set"),
-            parser_actor_addr: self.parser_actor_addr,
+            wal_metric_actor_addr: self
+                .wal_metric_actor_addr
+                .expect("metric_wal_actor must be set"),
             factory_actor: self
                 .factory_actor_addr
                 .expect("factory_actor_addr must be set"),
             broadcast_actor: self.broadcast_actor,
+            parser_actor_addr: self.parser_actor_addr,
+            rhai_actor: self.rhai_actor,
         }
     }
 }
@@ -168,6 +213,18 @@ impl Handler<FetchWalActor> for Registry {
 }
 
 #[derive(Message)]
+#[rtype(result = "Result<WalMetricActorWrapper, ()>")]
+pub struct FetchWalMetricActor;
+
+// Handlers for fetching actors
+impl Handler<FetchWalMetricActor> for Registry {
+    type Result = Result<WalMetricActorWrapper, ()>;
+    fn handle(&mut self, _: FetchWalMetricActor, _: &mut Self::Context) -> Self::Result {
+        Ok(self.wal_metric_actor_addr.clone())
+    }
+}
+
+#[derive(Message)]
 #[rtype(result = "Result<FlightRegistryActorWrapped, Error>")]
 pub struct FetchFlightRegistryActor;
 
@@ -179,13 +236,24 @@ impl Handler<FetchFlightRegistryActor> for Registry {
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<IcebergActorAddr, ()>")]
+#[rtype(result = "Result<IcebergActorAddr, ActorError>")]
 pub struct FetchIcebergActor;
 
 impl Handler<FetchIcebergActor> for Registry {
-    type Result = Result<IcebergActorAddr, ()>;
+    type Result = Result<IcebergActorAddr, ActorError>;
     fn handle(&mut self, _: FetchIcebergActor, _: &mut Self::Context) -> Self::Result {
         Ok(self.iceberg_actor_addr.clone())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<IcebergActorAddr, ActorError>")]
+pub struct FetchIcebergMeterActor;
+
+impl Handler<FetchIcebergMeterActor> for Registry {
+    type Result = Result<IcebergActorAddr, ActorError>;
+    fn handle(&mut self, _: FetchIcebergMeterActor, _: &mut Self::Context) -> Self::Result {
+        Ok(self.iceberg_meter_actor_addr.clone())
     }
 }
 
@@ -197,9 +265,14 @@ pub struct FetchBroadcastActor {
 
 impl Handler<FetchBroadcastActor> for Registry {
     type Result = Result<BroadcastActorWrapper, RegistryError>;
-    fn handle(&mut self, _: FetchBroadcastActor, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        fetch_broadcast_actor: FetchBroadcastActor,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.broadcast_actor
-            .clone()
+            .get(fetch_broadcast_actor.flight_name.as_str())
+            .cloned()
             .ok_or(RegistryError::ActorNotInitialized(
                 "Broadcast actor not initialized".to_string(),
             ))
@@ -217,15 +290,25 @@ impl Handler<FetchDbActor> for Registry {
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<ParserActorAddr, ()>")]
+#[rtype(result = "Result<Vec<ParserActorAddr>, ()>")]
 pub struct FetchParserActor {
     pub flight_name: String,
 }
 
 impl Handler<FetchParserActor> for Registry {
-    type Result = Result<ParserActorAddr, ()>;
-    fn handle(&mut self, _: FetchParserActor, _: &mut Self::Context) -> Self::Result {
-        Ok(self.parser_actor_addr.clone().unwrap())
+    type Result = Result<Vec<ParserActorAddr>, ()>;
+    fn handle(
+        &mut self,
+        fetch_parser_actor: FetchParserActor,
+        _: &mut Self::Context,
+    ) -> Self::Result {
+        let flight_name = fetch_parser_actor.flight_name.clone();
+
+        let parsing_actor = self.parser_actor_addr.get(flight_name.as_str());
+        if let None = parsing_actor {
+            error!("Parser actor not initialized for flight {}", flight_name);
+        }
+        Ok(parsing_actor.unwrap().clone())
     }
 }
 
@@ -243,10 +326,25 @@ impl Handler<FetchFactoryActor> for Registry {
 /// Registration handlers
 /// All the actors register with this actor once they start.
 /// TODO - Unregister once stopped.
-impl Handler<ParserActorAddr> for Registry {
+impl Handler<ParserActorReady> for Registry {
     type Result = ();
-    fn handle(&mut self, msg: ParserActorAddr, _: &mut Self::Context) -> Self::Result {
-        self.parser_actor_addr = Some(msg);
+    fn handle(&mut self, msg: ParserActorReady, _: &mut Self::Context) -> Self::Result {
+        let parsers = self
+            .parser_actor_addr
+            .entry(msg.flight_name.clone())
+            .or_insert_with(Vec::new);
+
+        parsers.push(msg.parser_actor_addr);
+    }
+}
+
+impl Handler<RhaiActorReady> for Registry {
+    type Result = ();
+
+    fn handle(&mut self, msg: RhaiActorReady, _ctx: &mut Self::Context) -> Self::Result {
+        self.rhai_actor
+            .entry(msg.flight_name.clone())
+            .or_insert_with(|| msg.rhai_actor_addr);
     }
 }
 
@@ -267,7 +365,8 @@ impl Handler<FlightRegistryActorWrapped> for Registry {
 impl Handler<IcebergActorAddr> for Registry {
     type Result = ();
     fn handle(&mut self, msg: IcebergActorAddr, _: &mut Self::Context) {
-        self.iceberg_actor_addr = msg;
+        self.iceberg_actor_addr = msg.clone();
+        self.iceberg_meter_actor_addr = msg;
     }
 }
 
@@ -278,6 +377,16 @@ impl Handler<WalActorWrapper> for Registry {
     }
 }
 
+impl Handler<WalMetricActorWrapper> for Registry {
+    type Result = ();
+
+    fn handle(&mut self, msg: WalMetricActorWrapper, _: &mut Self::Context) {
+        self.wal_metric_actor_addr = msg;
+        print!("wal metric actor wrapper:");
+        info!("wal matric actor wrapper: {:?}", self.wal_metric_actor_addr);
+    }
+}
+
 impl Handler<FactoryActorAddr> for Registry {
     type Result = ();
     fn handle(&mut self, msg: FactoryActorAddr, _: &mut Self::Context) {
@@ -285,68 +394,22 @@ impl Handler<FactoryActorAddr> for Registry {
     }
 }
 
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct RegisterBroadcastActor {
-    pub broadcast_actor_wrapped_single: BroadcastActorWrapper,
-}
+use crate::application::actors::wal::log::log_wal_actor::{WalActor, WalActorWrapper};
+use crate::core::error::exception::actor_errors::ActorError;
+
+pub(crate) use crate::application::actors::messages::registeration::RegisterBroadcastActor;
+use crate::application::actors::rhai::handler::record_batch_wrapper::RhaiActorReady;
+use crate::application::actors::wal::metric::metric_wal_actor::{
+    WalMetricActor, WalMetricActorWrapper,
+};
 
 impl Handler<RegisterBroadcastActor> for Registry {
     type Result = ();
 
-    fn handle(&mut self, msg: RegisterBroadcastActor, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RegisterBroadcastActor, _ctx: &mut Self::Context) -> Self::Result {
         // Correctly handle the initial registration
-        if self.broadcast_actor.is_none() {
-            self.broadcast_actor = Some(msg.broadcast_actor_wrapped_single);
-            println!("Broadcast actor registered for the first time");
-            return;
-        }
-
-        // Get a mutable reference to the actor's state
-        let current_actor_wrapped = self.broadcast_actor.as_mut().unwrap();
-
-        // Merge the new actor into the existing one directly
-        let result =
-            merge_broadcast_actors(current_actor_wrapped, msg.broadcast_actor_wrapped_single);
-
-        match result {
-            Ok(_) => {
-                println!("Successfully merged new broadcast actor.");
-            }
-            Err(e) => {
-                error!("Error in merging broadcast actors: {}", e);
-            }
-        }
-    }
-}
-
-fn merge_broadcast_actors(
-    current: &BroadcastActorWrapper,
-    new: BroadcastActorWrapper,
-) -> Result<BroadcastActorWrapper, RegistryError> {
-    match (current.clone(), &new.clone()) {
-        (BroadcastActorWrapper::Real(mut current_map), BroadcastActorWrapper::Real(new)) => {
-            let flight = new.keys().next().unwrap();
-            if current_map.contains_key(flight) {
-                error!("Broadcast actor already exists for flight {}", flight);
-            } else {
-                current_map.insert(flight.clone(), new.get(flight).unwrap().clone());
-            }
-            Ok(BroadcastActorWrapper::Real(current_map))
-        }
-        #[cfg(test)]
-        (BroadcastActorWrapper::Mock(mut current), BroadcastActorWrapper::Mock(new)) => {
-            let flight = new.keys().next().unwrap();
-            if current.contains_key(flight) {
-                error!("Broadcast actor already exists for flight {}", flight);
-            } else {
-                current.insert(flight.clone(), new.get(flight).unwrap().clone());
-            }
-            Ok(BroadcastActorWrapper::Mock(current))
-        }
-        _ => Err(RegistryError::ActorNotInitialized(
-            "Error in actor types".to_string(),
-        )),
+        self.broadcast_actor
+            .insert(msg.flight_name.clone(), msg.broadcast_actor_wrapped_single);
     }
 }
 
@@ -376,4 +439,22 @@ pub enum ActorAddr {
     Parser(ParserActorAddr),
     Factory(FactoryActorAddr),
     Broadcast(BroadcastActorWrapper),
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<RhaiActorAddr, RegistryError>")]
+pub struct FetchRhaiActor {
+    pub flight_name: String,
+}
+
+impl Handler<FetchRhaiActor> for Registry {
+    type Result = Result<RhaiActorAddr, RegistryError>;
+    fn handle(&mut self, fetch_rhai_actor: FetchRhaiActor, _: &mut Self::Context) -> Self::Result {
+        let flight_name = fetch_rhai_actor.flight_name.clone();
+        let rhai_actor = self.rhai_actor.get(flight_name.as_str());
+        if let None = rhai_actor {
+            error!("Rhai actor not initialized for flight {}", flight_name);
+        }
+        Ok(rhai_actor.unwrap().clone())
+    }
 }

@@ -4,7 +4,7 @@ use flatbuffers::FlatBufferBuilder;
 
 // Using fully qualified paths for generated Flatbuffers types for clarity
 // This assumes 'wal_schema_generated' is generated into a 'wal' module.
-use crate::application::actors::broadcast_actor::{Metadata, RecordBatchWrapper};
+use crate::application::actors::broadcaster::broadcast_actor::{Metadata, RecordBatchWrapper};
 use crate::schema::wal_schema_generated::wal::{
     FlatbufMeta,
     FlatbufMetaArgs,
@@ -16,7 +16,7 @@ use crate::schema::wal_schema_generated::wal::{
 
 /// Serializes an Arrow RecordBatch into a byte buffer without including the Schema.
 ///
-/// This function generates the IPC message and data for dictionaries and the record batch,
+/// This function generates the IPC handler and data for dictionaries and the record batch,
 /// then concatenates them into a single `Vec<u8>`.
 ///
 /// # Arguments
@@ -49,7 +49,7 @@ pub fn serialize_record_batch_without_schema(record_batch_wrapper: &RecordBatchW
         buffer.extend_from_slice(&dict.arrow_data);
     }
 
-    // Append batch message and data
+    // Append batch handler and data
     buffer.extend_from_slice(&batch_data.ipc_message);
     buffer.extend_from_slice(&batch_data.arrow_data);
 

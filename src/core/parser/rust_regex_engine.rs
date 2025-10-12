@@ -1,12 +1,11 @@
-use crate::application::actors::broadcast_actor::RecordBatchWrapper;
+use crate::application::actors::broadcaster::broadcast_actor::RecordBatchWrapper;
 use crate::core::error::exception::regex::RegexError;
 use crate::core::parser::messages::parser::Pattern;
 use crate::core::parser::parser_contract::ParserContract;
 use crate::core::utils::arrow::extract_col_from_flight_buffer;
-use arrow_array::builder::{ArrayBuilder, GenericStringBuilder};
-use arrow_array::{Array, ArrayRef, StructArray};
+use arrow_array::builder::GenericStringBuilder;
+use arrow_array::{Array, ArrayRef, RecordBatch, StructArray};
 use arrow_schema::{DataType, Field, Fields};
-use rayon::prelude::*;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -193,6 +192,7 @@ impl RustRegexEngine {
 }
 
 impl ParserContract for RustRegexEngine {
+    /// Parses the structs, and then updates the current buffer, with the structs and returns it
     fn parse(
         &self,
         record_wrappers: Vec<RecordBatchWrapper>,
@@ -216,9 +216,12 @@ impl ParserContract for RustRegexEngine {
             let new_schema = Arc::new(arrow_schema::Schema::new(fields));
             let mut cols = orig_batch.columns().to_vec();
             cols.push(Arc::new(parsed_struct) as ArrayRef);
-
-            let new_batch = arrow_array::RecordBatch::try_new(new_schema, cols)
-                .map_err(|e| RegexError::RegexIncorrect(format!("Batch rebuild error: {e}")))?;
+            let new_batch = RecordBatch::try_new(new_schema, cols)
+                .map(Arc::new)
+                .unwrap_or_else(|_err| {
+                    // Fallback: return original batch unchanged
+                    orig_batch.clone()
+                });
 
             let metadata = batch.get_metadata();
             updated_wrappers.push(RecordBatchWrapper::new(metadata.clone(), &new_batch));

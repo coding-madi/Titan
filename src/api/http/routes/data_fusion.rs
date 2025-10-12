@@ -1,4 +1,5 @@
-use crate::application::actors::iceberg_actor::{GetBuffer, IcebergActorAddr};
+use crate::application::actors::iceberg::iceberg_actor::{GetBuffer, IcebergActorAddr};
+use crate::monitor::prometheus::registry::JOB_LATENCY_HISTOGRAM;
 use crate::platform::registry::{FetchIcebergActor, Registry};
 use actix::Addr;
 use actix_web::web::Data;
@@ -10,8 +11,7 @@ use futures_util::SinkExt;
 use serde_derive::Deserialize;
 use std::io::Error;
 use std::sync::Arc;
-use tracing::error;
-pub struct DataFusion;
+use tracing::{error, info};
 
 pub fn execute_sql_factory() -> Resource {
     web::resource("/sql").route(web::post().to(execute))
@@ -27,15 +27,19 @@ pub async fn execute(
     execute_sql: web::Json<ExecuteSql>,
     registry: Data<Arc<Addr<Registry>>>,
 ) -> Result<String, Error> {
+    let _timer = JOB_LATENCY_HISTOGRAM
+        .with_label_values(&[
+            execute_sql.stream_name.to_string(),
+            "sql_query_latencies".to_string(),
+        ])
+        .start_timer();
     if let Ok(Ok(iceberg_actor)) = registry.send(FetchIcebergActor).await {
-        error!("Actor not found");
+        info!("Iceberg Actor found");
         let ctx = SessionContext::new();
         match iceberg_actor {
             IcebergActorAddr::Real(iceberg_actor) => {
                 let buffer = match iceberg_actor
-                    .send(GetBuffer {
-                        stream: execute_sql.stream_name.clone(),
-                    })
+                    .send(GetBuffer::new(execute_sql.stream_name.clone()))
                     .await
                 {
                     Ok(inner) => match inner {

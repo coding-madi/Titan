@@ -1,10 +1,12 @@
-use crate::application::actors::broadcast_actor::RecordBatchWrapper;
+use crate::application::actors::broadcaster::broadcast_actor::RecordBatchWrapper;
 use crate::core::error::exception::regex::RegexError;
 use arrow::compute::concat_batches;
+use arrow::util::pretty::print_batches;
 use arrow_array::{Array, RecordBatch, StringArray, StructArray};
 use arrow_schema::{ArrowError, DataType};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::Arc;
 
 pub async fn concat_batches_grouped(
@@ -65,7 +67,7 @@ pub fn struct_array_to_json(struct_array: &StructArray) -> Vec<Value> {
         _ => panic!("Not a StructArray"),
     };
 
-    for row in 0..num_rows {
+    for row in 0..10 {
         if struct_array.is_null(row) {
             result.push(Value::Null);
             continue;
@@ -109,4 +111,8 @@ pub fn extract_col_from_flight_buffer<'a>(
         .ok_or_else(|| RegexError::RegexIncorrect("log_group_name is not StringArray".to_string()))
         .unwrap();
     log_name_array
+}
+
+pub fn print_record_batch(record_batch: Arc<RecordBatch>) {
+    print_batches(&[record_batch.deref().clone()]).unwrap();
 }

@@ -4,8 +4,8 @@ use poros::config::yaml_reader::read_configuration;
 use poros::version::print_version;
 
 use clap::Parser;
-use poros::application::actors::db_actor::DbActorAddr::Real;
-use poros::application::actors::db_actor::ReposReady;
+use poros::application::actors::database::db_actor::DbActorAddr::Real;
+use poros::application::actors::database::db_actor::ReposReady;
 use poros::application::actors::factory::factory::init_actors;
 use poros::core::db::init_repositories;
 use poros::core::logging::file_writer::FileWriter;
@@ -16,24 +16,19 @@ use poros::servers::injest_server::InjestServer;
 use poros::servers::query_server::QueryServer;
 use poros::servers::server::PorosServer;
 
-/// Simple Rust application demonstrating version display with clap.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)] // Use `version` here!
-struct Args {
-    // You can add other arguments here if your application needs them
-    // For example:
-    // #[arg(short, long, default_value_t = 1, help = "Number of times to greet")]
-    // count: u8,
-}
+struct Args {}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let _args = Args::parse();
     print_version();
-
+    // console_subscriber::init(); // Tokio console - debuggin
     // TODO: implement log rotation
+
     let file_writer = FileWriter::new("poros.log");
-    let subscriber = get_subscribers("poros", "INFO", file_writer);
+    let subscriber = get_subscribers("poros", "TRACE", file_writer);
     init_subscriber(subscriber);
     let config = read_configuration();
 

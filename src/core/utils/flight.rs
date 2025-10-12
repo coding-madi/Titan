@@ -1,16 +1,21 @@
-use crate::application::actors::broadcast_actor::{BroadcastActor, Metadata, RecordBatchWrapper};
-use crate::application::actors::db_actor::{DbActorAddr, SaveSchema};
-use crate::application::actors::flight_registry_actor::{
-    CheckFlight, Fields, FlightRegistryActorWrapped, RegisterFlight,
+use crate::application::actors::broadcaster::broadcast_actor::{
+    BroadcastActor, Metadata, RecordBatchWrapper,
 };
-use crate::application::actors::iceberg_actor::{CreateTable, IcebergActorAddr};
+use crate::application::actors::database::db_actor::DbActorAddr;
+use crate::application::actors::database::handler::schema::SaveSchema;
+use crate::application::actors::flight_registry::flight_registry_actor::{
+    Fields, FlightRegistryActorWrapped,
+};
+use crate::application::actors::flight_registry::handler::flight::{CheckFlight, RegisterFlight};
+use crate::application::actors::iceberg::handler::create_table::CreateTable;
+use crate::application::actors::iceberg::iceberg_actor::IcebergActorAddr;
 use crate::core::error::exception::registry::RegistryError;
 use crate::platform::registry::{
     FetchDbActor, FetchFlightRegistryActor, FetchIcebergActor, Registry,
 };
 use actix::Addr;
 use actix_web::web::Bytes;
-use arrow_array::RecordBatch;
+use arrow_array::{Array, RecordBatch, TimestampMicrosecondArray};
 use arrow_flight::utils::flight_data_to_arrow_batch;
 use arrow_flight::{FlightData, FlightDescriptor, FlightInfo, SchemaAsIpc, SchemaResult};
 use arrow_ipc::writer::{DictionaryTracker, IpcDataGenerator, IpcWriteOptions};
@@ -267,7 +272,7 @@ pub async fn handle_record_batch_put_message(
     broadcast_actor: Addr<BroadcastActor>,
 ) -> Result<(), Status> {
     if flight_data.data_body.is_empty() {
-        return Ok(()); // No data in this message
+        return Ok(()); // No data in this handler
     }
 
     let batch = flight_data_to_arrow_batch(
@@ -276,7 +281,46 @@ pub async fn handle_record_batch_put_message(
         &Default::default(), // DictionaryTracker
     )
     .map_err(|e| Status::internal(format!("Failed to convert to RecordBatch: {}", e)))?;
-    let metadata = Metadata::new(flight_name, 1, schema.clone());
+
+    let ts_col = batch
+        .column_by_name("ts_field_1")
+        .expect("Column ts_field_1 not found");
+
+    let ts_array = ts_col
+        .as_any()
+        .downcast_ref::<TimestampMicrosecondArray>()
+        .expect("ts_field_1 is not Int64Array");
+
+    // skip nulls while computing min/max
+    let min_value = (0..ts_array.len())
+        .filter_map(|i| {
+            if ts_array.is_null(i) {
+                None
+            } else {
+                Some(ts_array.value(i))
+            }
+        })
+        .min()
+        .unwrap();
+
+    let max_value = (0..ts_array.len())
+        .filter_map(|i| {
+            if ts_array.is_null(i) {
+                None
+            } else {
+                Some(ts_array.value(i))
+            }
+        })
+        .max()
+        .unwrap();
+    let metadata = Metadata::new(
+        flight_name,
+        1,
+        schema.clone(),
+        Some(min_value.clone()),
+        Some(max_value.clone()),
+    );
+    // let metadata = Metadata::new(flight_name, 1, schema.clone(), Some(0), Some(0));
     let batch_wrapped = RecordBatchWrapper::new(metadata, &batch);
 
     broadcast_actor.do_send(batch_wrapped);
@@ -300,11 +344,9 @@ pub async fn validate_if_flight_exists(
                     .await
                 {
                     Ok(res) => Ok(res),
-                    Err(e) => {
-                        return Err(RegistryError::ActorNotInitialized(
-                            "Some error in actor system".to_string(),
-                        ));
-                    }
+                    Err(_e) => Err(RegistryError::ActorNotInitialized(
+                        "Some error in actor system".to_string(),
+                    )),
                 }
             }
             #[cfg(test)]

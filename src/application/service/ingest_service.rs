@@ -1,9 +1,11 @@
-use crate::application::actors::broadcast_actor::BroadcastActor;
+use crate::application::actors::broadcaster::broadcast_actor::BroadcastActor;
+use crate::application::actors::factory::factory_actor::CreateBroadcastActor;
 use crate::application::actors::factory::factory_actor::FactoryActorAddr::Real;
-use crate::application::actors::factory::factory_actor::{CreateBroadcastActor, CreateParserActor};
+use crate::application::actors::messages::registeration::{CreateParserActor, CreateRhaiActor};
 use crate::config::yaml_reader::Settings;
 use crate::core::parser::parser_contract::ParserType;
 use crate::core::utils::flight::{handle_record_batch_put_message, initialize_stream};
+use crate::monitor::prometheus::registry::{ACTIVE_SESSIONS, COUNTER, REGISTRY};
 use crate::platform::registry::Registry;
 use actix::Addr;
 use actix_web::web::Bytes;
@@ -32,6 +34,8 @@ impl InjestService {
     where
         S: Stream<Item = Result<FlightData, Status>> + Unpin + Send + 'static,
     {
+        // Register the active flight streams count
+        ACTIVE_SESSIONS.with_label_values(&["ingest"]).inc();
         // 1. Process initial metadata and schema.
         // Register the details in Flight registry
         let (flight_name, arrow_schema) =
@@ -61,6 +65,7 @@ impl InjestService {
             app_metadata,
             ..Default::default()
         };
+        ACTIVE_SESSIONS.with_label_values(&["ingest"]).dec();
         Ok(vec![put_result])
     }
 }
@@ -81,7 +86,16 @@ async fn process_flight_stream(
             continue;
         }
 
-        total_data_bytes_received += flight_data.data_body.len();
+        let size_of_current_buffer = flight_data.data_body.len();
+        total_data_bytes_received += size_of_current_buffer;
+
+        println!(
+            "total_data_bytes_received: {}",
+            size_of_current_buffer as u64 / 1024
+        );
+        COUNTER
+            .with_label_values(&[flight_name, "KB_received"])
+            .inc_by((size_of_current_buffer / 1024) as u64);
 
         handle_record_batch_put_message(&flight_data, schema, flight_name, broadcast.clone())
             .await?;
@@ -96,11 +110,12 @@ async fn initialize_actors(
     config: Arc<Settings>,
     flight_name: &str,
 ) -> Result<Addr<BroadcastActor>, Status> {
+    info!("Initializing actors for flight: {}", flight_name);
     let factory_actor_addr = actor_registry
         .send(crate::platform::registry::FetchFactoryActor {})
         .await
         .map_err(|e| Status::internal(format!("Failed to get factory actor: {}", e)))?
-        .map_err(|e| Status::internal("Failed to get factory actor: Not found"))?;
+        .map_err(|_e| Status::internal("Failed to get factory actor: Not found"))?;
 
     let factory = match factory_actor_addr {
         Real(addr) => addr,
@@ -109,10 +124,18 @@ async fn initialize_actors(
         }
     };
 
+    let rhai_actor = factory
+        .send(CreateRhaiActor {
+            flight_name: flight_name.to_string(),
+        })
+        .await
+        .map_err(|e| Status::internal(format!("Failed to create rhai actor: {}", e)))?;
+
     let parser_type: ParserType = config.parser.clone().into();
     let parser_actors = factory
         .send(CreateParserActor {
             flight_name: flight_name.to_string(),
+            rhai_actor: rhai_actor.clone(),
             count: 2,
             parser_type,
         })

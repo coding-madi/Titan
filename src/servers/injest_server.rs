@@ -87,6 +87,8 @@ impl PorosServer for InjestServer {
         let server = Server::builder()
             .max_concurrent_streams(128) // Optional
             .max_frame_size(Some(16_777_215)) // maximum allowed by h2      // max HTTP2 frame
+            .initial_connection_window_size(Some(256 * 1024 * 1024))
+            .initial_stream_window_size(Some(256 * 1024 * 1024))
             .add_service(
                 FlightServiceServer::new(log_flight_server)
                     .max_decoding_message_size(128 * 1024 * 1024)
@@ -140,7 +142,7 @@ impl PorosServer for InjestServer {
     }
 }
 
-use crate::api::flight::service::LogFlightServer;
+use crate::api::flight::flight_handler::LogFlightServer;
 use crate::application::service::ingest_service::InjestService;
 use crate::config::yaml_reader::Settings;
 use crate::core::db::factory::database_factory::RepositoryProvider;

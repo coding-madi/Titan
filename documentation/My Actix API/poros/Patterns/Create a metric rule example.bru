@@ -13,50 +13,51 @@ post {
 body:json {
   {
     "rule_name": "error_rate_alert",
+    "flight_name": "log",
     "scope": "Global",
     "window_sec": 60,
     "filter": {
-      "And": [
+      "Or": [
         {
           "Eq": [
-            "status",
-            "500"
+            "log_name",
+            "log_1"
           ]
         },
         {
-          "RegexMatch": [
-            "service",
-            "auth.*"
+          "Eq": [
+            "log_group_name",
+            "log_group_A"
           ]
         }
       ]
     },
     "group_by": [
-      "service",
-      "host"
+      "log_name",
+      "log_group_name"
     ],
     "aggregations": [
       {
-        "Count": null
+        "Count": "int_field_0"
       },
       {
         "Sum": {
-          "Field": "latency_ms"
+          "Field": "int_field_0"
         }
       },
       {
         "Avg": {
-          "CastToFloat": "cpu_usage"
+          "CastToFloat": "int_field_1"
         }
       },
       {
         "Min": {
-          "Field": "memory_usage"
+          "Field": "int_field_2"
         }
       },
       {
         "Max": {
-          "CastToInt": "connections"
+          "CastToInt": "int_field_3"
         }
       }
     ]

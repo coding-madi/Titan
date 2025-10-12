@@ -1,4 +1,4 @@
-use crate::application::actors::broadcast_actor::RecordBatchWrapper;
+use crate::application::actors::broadcaster::broadcast_actor::RecordBatchWrapper;
 use crate::core::buffer::drain_strategy::BufferDrain;
 use dashmap::DashMap;
 

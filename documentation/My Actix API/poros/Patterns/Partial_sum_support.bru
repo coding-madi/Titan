@@ -1,0 +1,51 @@
+meta {
+  name: Partial_sum_support
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/metric-rule
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "rule_name": "error_rate_alert",
+    "flight_name": "log",
+    "scope": "Global",
+    "window_sec": 60,
+    "filter": {
+      "Or": [
+        {
+          "Eq": [
+            "log_name",
+            "log_1"
+          ]
+        },
+        {
+          "Eq": [
+            "log_group_name",
+            "log_group_A"
+          ]
+        }
+      ]
+    },
+    "group_by": [
+      "log_name",
+      "log_group_name"
+    ],
+    "aggregations": [
+      {
+        "Sum": {
+          "Field": "int_field_0"
+        }
+      }
+    ]
+  }
+}
+
+settings {
+  encodeUrl: true
+}

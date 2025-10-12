@@ -1,15 +1,9 @@
-use actix::MailboxError;
-use std::fmt::{Display, Formatter};
+use thiserror::Error;
 
-#[derive(Debug)]
-pub enum ErrorType {
-    ActorError(MailboxError),
-}
-
-impl Display for ErrorType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ErrorType::ActorError(e) => write!(f, "Actor error: {}", e),
-        }
-    }
+#[derive(Debug, Error)]
+pub enum ActorError {
+    #[error("Actor mail box panic!!: {0}")]
+    ActorError(String),
+    #[error("Actor not started: {0}")]
+    ActorNotStarted(String),
 }

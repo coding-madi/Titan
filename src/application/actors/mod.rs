@@ -1,9 +1,12 @@
-pub mod broadcast_actor;
-pub mod db_actor;
+pub(crate) mod broadcaster;
 pub mod factory;
-pub mod flight_registry_actor;
-pub mod iceberg_actor;
-pub mod parser_actor;
-pub mod rhai_actor;
+pub mod iceberg;
+pub mod messages;
+pub(crate) mod parser;
 mod tests;
-pub mod wal_actor;
+pub mod wal;
+
+pub mod database;
+pub mod rhai;
+
+pub mod flight_registry;

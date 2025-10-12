@@ -1,32 +1,33 @@
-#[cfg(test)]
-use crate::application::actors::broadcast_actor::MockBroadcastActor;
 #[cfg(not(test))]
-use crate::application::actors::db_actor::DbActor;
+use crate::application::actors::database::db_actor::DbActor;
 #[cfg(test)]
-use crate::application::actors::db_actor::MockDbActor;
+use crate::application::actors::database::db_actor::MockDbActor;
 #[cfg(not(test))]
-use crate::application::actors::flight_registry_actor::FlightRegistry;
+use crate::application::actors::flight_registry::flight_registry_actor::FlightRegistry;
 #[cfg(test)]
-use crate::application::actors::flight_registry_actor::MockFlightRegistry;
+use crate::application::actors::flight_registry::flight_registry_actor::MockFlightRegistry;
 #[cfg(not(test))]
-use crate::application::actors::iceberg_actor::IcebergActor;
+use crate::application::actors::iceberg::iceberg_actor::IcebergActor;
 #[cfg(test)]
-use crate::application::actors::iceberg_actor::MockIcebergActor;
+use crate::application::actors::iceberg::iceberg_actor::MockIcebergActor;
 #[cfg(test)]
-use crate::application::actors::parser_actor::MockParsingActor;
+use crate::application::actors::parser::parser_actor::MockParsingActor;
 #[cfg(test)]
-use crate::application::actors::wal_actor::MockWalActor;
+use crate::application::actors::wal::log::log_wal_actor::MockWalActor;
 #[cfg(not(test))]
-use crate::application::actors::wal_actor::WalActor;
+use std::collections::HashMap;
+#[cfg(test)]
+use std::collections::HashMap;
 
 #[cfg(not(test))]
-use crate::application::actors::db_actor::DbActorAddr;
+use crate::application::actors::database::db_actor::DbActorAddr;
 #[cfg(not(test))]
-use crate::application::actors::flight_registry_actor::FlightRegistryActorWrapped;
+use crate::application::actors::flight_registry::flight_registry_actor::FlightRegistryActorWrapped;
 #[cfg(not(test))]
-use crate::application::actors::iceberg_actor::IcebergActorAddr;
+use crate::application::actors::iceberg::iceberg_actor::IcebergActorAddr;
 #[cfg(not(test))]
-use crate::application::actors::wal_actor::WalActorWrapper;
+use crate::config::yaml_reader::Settings;
+#[cfg(test)]
 use crate::config::yaml_reader::Settings;
 use crate::core::db::factory::database_factory::RepositoryProvider;
 use crate::platform::registry::{Registry, RegistryBuilder};
@@ -38,11 +39,14 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
     let registry_actor = Registry {
         db_actor_addr: DbActorAddr::Empty,
         iceberg_actor_addr: IcebergActorAddr::Empty,
+        iceberg_meter_actor_addr: IcebergActorAddr::Empty,
         wal_actor_addr: WalActorWrapper::Empty,
+        wal_metric_actor_addr: WalMetricActorWrapper::Empty,
         flight_registry_actor_addr: FlightRegistryActorWrapped::Empty,
-        parser_actor_addr: None,
+        parser_actor_addr: HashMap::new(),
         factory_actor: FactoryActorAddr::Empty,
-        broadcast_actor: None,
+        broadcast_actor: HashMap::new(),
+        rhai_actor: HashMap::new(),
     };
 
     let registry_actor_addr = registry_actor.clone().start();
@@ -57,9 +61,18 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
     )
     .await; // The actor instance
 
+    // meter iceberg actor instance
+    let meter_iceberg_actor_instance = IcebergActor::new(
+        registry_actor_addr.clone(),
+        config.storage.clone(),
+        config.storage.namespace.clone(),
+    )
+    .await;
+
     // WalActor uses the Addr of the *started* IcebergActor
     let wal_actor_instance = WalActor::new(registry_actor_addr.clone());
-    let flight_registry_actor = FlightRegistry::new(registry_actor_addr.clone()).await;
+    let metric_wal_actor_instance = WalMetricActor::new(registry_actor_addr.clone());
+    let flight_registry_actor = FlightRegistry::new(registry_actor_addr.clone());
     let factory_actor = FactoryActor::new(registry_actor_addr.clone());
 
     // Actors are started in this builder
@@ -67,8 +80,10 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
     RegistryBuilder::new()
         .db_actor(db_actor)
         .iceberg_actor(iceberg_actor_instance.unwrap()) // Pass the *instance* to the builder
+        .iceberg_meter_actor(meter_iceberg_actor_instance.unwrap())
         .flight_registry_actor(flight_registry_actor)
         .wal_actor(wal_actor_instance) // Pass the WalActor instance
+        .wal_metric_actor(metric_wal_actor_instance)
         .factory_actor(factory_actor)
         .build();
 
@@ -76,39 +91,44 @@ pub async fn init_actors(config: &Settings, repos: Arc<dyn RepositoryProvider>) 
 }
 
 #[cfg(test)]
-use crate::application::actors::db_actor::DbActorAddr;
+use crate::application::actors::database::db_actor::DbActorAddr;
 #[cfg(test)]
 use crate::application::actors::factory::factory_actor::tests::MockFactoryActor;
 use crate::application::actors::factory::factory_actor::{FactoryActor, FactoryActorAddr};
 #[cfg(test)]
-use crate::application::actors::flight_registry_actor::FlightRegistryActorWrapped;
+use crate::application::actors::flight_registry::flight_registry_actor::FlightRegistryActorWrapped;
 #[cfg(test)]
-use crate::application::actors::iceberg_actor::IcebergActorAddr;
+use crate::application::actors::iceberg::iceberg_actor::IcebergActorAddr;
+use crate::application::actors::wal::log::log_wal_actor::{WalActor, WalActorWrapper};
 #[cfg(test)]
-use crate::application::actors::wal_actor::WalActorWrapper;
+use crate::application::actors::wal::metric::metric_wal_actor::tests::MockWalMetricActor;
+use crate::application::actors::wal::metric::metric_wal_actor::{
+    WalMetricActor, WalMetricActorWrapper,
+};
+
 #[cfg(test)]
 pub async fn init_actors(
     _config: &Settings,
     _repos: Arc<dyn RepositoryProvider>,
 ) -> Arc<Addr<Registry>> {
     let registry = Registry {
+        // Static actors
         db_actor_addr: DbActorAddr::Empty,
         flight_registry_actor_addr: FlightRegistryActorWrapped::Empty,
         iceberg_actor_addr: IcebergActorAddr::Empty,
+        iceberg_meter_actor_addr: IcebergActorAddr::Empty,
         wal_actor_addr: WalActorWrapper::Empty,
-        parser_actor_addr: None,
+        wal_metric_actor_addr: WalMetricActorWrapper::Empty,
         factory_actor: FactoryActorAddr::Empty,
-        broadcast_actor: None,
+        // Dynamic actors - 1 per flight stream
+        broadcast_actor: HashMap::new(),
+        parser_actor_addr: HashMap::new(),
+        rhai_actor: HashMap::new(),
     };
 
     let registry_address = registry.start();
     let db_actor = MockDbActor {
         registry_address: registry_address.clone(),
-    };
-    let broadcast_actor = MockBroadcastActor {
-        registry_address: registry_address.clone(),
-        data: vec![],
-        regex_request: vec![],
     };
     let flight_registry_actor = MockFlightRegistry {
         registry_address: registry_address.clone(),
@@ -116,7 +136,14 @@ pub async fn init_actors(
     let iceberg_actor = MockIcebergActor {
         registry_address: registry_address.clone(),
     };
-    let wal_actor = MockWalActor::new(registry_address.clone());
+
+    let meter_iceberg_actor = MockIcebergActor {
+        registry_address: registry_address.clone(),
+    };
+
+    let wal_actor = MockWalActor::new();
+
+    let metric_wal_actor = MockWalMetricActor::new();
 
     let parser_actor = vec![MockParsingActor {
         registry_address: registry_address.clone(),
@@ -130,7 +157,9 @@ pub async fn init_actors(
         .db_actor(db_actor)
         .flight_registry_actor(flight_registry_actor)
         .iceberg_actor(iceberg_actor)
+        .iceberg_meter_actor(meter_iceberg_actor)
         .wal_actor(wal_actor)
+        .wal_metric_actor(metric_wal_actor)
         .factory_actor(factory_actor)
         .build();
 

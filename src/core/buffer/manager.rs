@@ -1,4 +1,4 @@
-use crate::application::actors::broadcast_actor::RecordBatchWrapper;
+use crate::application::actors::broadcaster::broadcast_actor::RecordBatchWrapper;
 use crate::core::buffer::drain_strategy::BufferDrain;
 use arrow_array::RecordBatch;
 use dashmap::DashMap;
@@ -60,6 +60,7 @@ impl BufferManager {
     }
 
     // Estimate the size of the arrow buffer
+    #[allow(dead_code, unused_imports)]
     fn batch_size(batch: &RecordBatch) -> usize {
         batch
             .columns()

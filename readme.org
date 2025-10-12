@@ -59,3 +59,20 @@ rustup component add clippy
 #+begin_src bash
 cargo install --version=0.5.7 sqlx-cli --no-default-features --features postgres
 #+end_src
+
+
+
+// Points
+
+1. Window 11:00 to 12:00
+2. Record 1 = min - 10:55 && max - 11:20
+3. Record 2 = min - 10:40 && max - 11:10
+4. Record 3 =  min - 10:45 && max - 10:58
+5. Record 4 = min - 10.45 && max - 12:05   --> massive window spanning 2 windows - this cannot be handled properly
+
+And Record 1 in window 1 and window 2
+And record 2 in window 1 and window 2
+And record 3 in window 1
+
+What should be the trigger times? 10:55 just 10 secs from the time of the record. Record 1 max time is 11:20 so the window technically closed.
+But for this to work, i should stick to batches smaller then the size of the window.

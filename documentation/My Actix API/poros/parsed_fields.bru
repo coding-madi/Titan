@@ -1,0 +1,22 @@
+meta {
+  name: parsed_fields
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/sql
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "sql": "select * from log limit 10",
+    "stream_name": "log"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

@@ -19,15 +19,13 @@ use log::warn;
 use parquet::file::properties::WriterProperties;
 use std::ops::Deref;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tracing::{error, info};
 use uuid::Uuid;
 
 pub async fn load_table(
-    catalog: Arc<Mutex<RestCatalog>>,
+    catalog: Arc<RestCatalog>,
     table_ident: &TableIdent,
 ) -> Result<Table, IcebergError> {
-    let catalog = catalog.lock().await;
     match catalog.load_table(table_ident).await {
         Ok(table) => {
             info!("Table loaded successfully: {:?}", table_ident);
@@ -72,13 +70,11 @@ pub fn create_parquet_writer(
     Ok(DataFileWriterBuilder::new(parquet_writer_builder, None, 0))
 }
 
-// Needs buffer manager
-// restCatalog
-// namespace
-pub async fn flush_buffer(
+pub async fn flush_buffer_to_table(
     buffer_manager: Arc<BufferManager>,
-    catalog: Arc<Mutex<RestCatalog>>,
+    catalog: Arc<RestCatalog>,
     namespace: String,
+    table_name: Option<String>,
 ) -> Result<(), IcebergError> {
     let all_batches = buffer_manager.drain_all();
     let grouped = concat_batches_grouped(&all_batches).await.unwrap();
@@ -88,76 +84,135 @@ pub async fn flush_buffer(
         return Err(IcebergError::NamespaceError(ns_error.to_string()));
     }
 
-    // Limit concurrency to avoid deadlocks
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+    for (flight, batch) in grouped.into_iter() {
+        let mut final_table_name: Option<String> = None;
 
-    let tasks: Vec<_> = grouped
-        .into_iter()
-        .map(|(flight, batch)| {
-            let catalog_clone = catalog.clone();
-            let namespace_clone = namespace.clone();
-            let semaphore = semaphore.clone();
-            tokio::spawn(async move {
-                let _permit = semaphore.acquire_owned().await.unwrap();
+        if table_name.is_none().clone() {
+            final_table_name = Some(flight.clone());
+        } else {
+            final_table_name = Some(table_name.clone().unwrap());
+        }
 
-                let table_ident = match make_table_ident(flight.clone()) {
-                    Ok(t) => t,
-                    Err(e) => return Err(IcebergError::TableError(e.to_string())),
-                };
+        let table_ident = make_table_ident(final_table_name.unwrap())
+            .map_err(|e| IcebergError::TableError(e.to_string()))?;
 
-                let table = match load_table(catalog_clone.clone(), &table_ident).await {
-                    Ok(t) => t,
-                    Err(_e) => {
-                        warn!("Error loading table, attempting to create: {:?}", _e);
-                        let schema = batch.schema().deref().clone();
-                        let x = match create_table(
-                            catalog_clone.clone(),
-                            &namespace_clone,
-                            &flight,
-                            Arc::new(schema),
-                        )
-                        .await
-                        {
-                            Ok(t) => t,
-                            Err(e) => {
-                                error!("Error creating table: {:?}", e);
-                                println!("Error creating table: {:?}", e);
-                                return Err(IcebergError::TableError(e.to_string()));
-                            }
-                        };
+        let table = match load_table(catalog.clone(), &table_ident).await {
+            Ok(t) => t,
+            Err(_e) => {
+                warn!("Table load failed, attempting create for {}", flight);
+                let schema = batch.schema().deref().clone();
+                create_table(catalog.clone(), &namespace, &flight, Arc::new(schema))
+                    .await
+                    .map_err(|e| IcebergError::TableError(e.to_string()))?;
+                // try load again
+                load_table(catalog.clone(), &table_ident).await?
+            }
+        };
 
-                        load_table(catalog_clone.clone(), &table_ident).await?
-                    }
-                };
+        let wb = create_parquet_writer(&table)
+            .map_err(|e| IcebergError::StorageError(format!("writer build: {}", e)))?;
 
-                let writer_builder = create_parquet_writer(&table)?;
-                match write_and_close(writer_builder, batch).await {
-                    Ok(data_files) => {
-                        commit_transaction(&table, data_files, catalog_clone).await?;
-                    }
-                    Err(IcebergError::StorageError(e)) => {
-                        error!("Error writing data: {}", e);
-                        return Err(IcebergError::StorageError(e));
-                    }
-                    Err(e) => {
-                        error!("Other error while writing: {}", e);
-                        return Err(e);
-                    }
+        // simplistic retry loop
+        let mut attempt = 0usize;
+        let data_files = loop {
+            attempt += 1;
+            match write_and_close(wb.clone(), batch.clone()).await {
+                Ok(dfiles) => break dfiles,
+                Err(e) if attempt < 3 => {
+                    warn!(
+                        "write_and_close failed (attempt {}): {:?}, retrying",
+                        attempt, e
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(200 * attempt as u64))
+                        .await;
+                    continue;
                 }
+                Err(e) => {
+                    error!("write_and_close failed finally: {:?}", e);
+                    return Err(e);
+                }
+            }
+        };
 
-                Ok::<(), IcebergError>(())
-            })
-        })
-        .collect();
-
-    // Properly await all results
-    let results = futures::future::try_join_all(tasks).await.unwrap();
-    for r in results {
-        r?; // propagate individual task errors
+        if let Err(e) = commit_transaction(&table, data_files, catalog.clone()).await {
+            error!("commit_transaction failed: {:?}", e);
+            return Err(e);
+        }
     }
-
     Ok(())
 }
+
+// TODO: Make the table name as an argument
+// pub async fn flush_buffer(
+//     buffer_manager: Arc<BufferManager>,
+//     catalog: Arc<RestCatalog>,
+//     namespace: String,
+// ) -> Result<(), IcebergError> {
+//     let all_batches = buffer_manager.drain_all();
+//     let grouped = concat_batches_grouped(&all_batches).await.unwrap();
+//
+//     if let Err(ns_error) = create_namespace(catalog.clone(), &namespace).await {
+//         error!("Fatal error in creating namespace: {}", ns_error);
+//         return Err(IcebergError::NamespaceError(ns_error.to_string()));
+//     }
+//
+//     // 4) Process each flight sequentially (no semaphore, no spawning many tasks)
+//     for (flight, batch) in grouped.into_iter() {
+//         // Resolve table id
+//         let table_ident = make_table_ident(flight.clone())
+//             .map_err(|e| IcebergError::TableError(e.to_string()))?;
+//
+//         // Load table. Note: load_table currently locks catalog across await.
+//         // If RestCatalog is safe to use without external mutex, remove Mutex wrapper.
+//         // For now, call load_table helper (which locks internally).
+//         let table = match load_table(catalog.clone(), &table_ident).await {
+//             Ok(t) => t,
+//             Err(_e) => {
+//                 warn!("Table load failed, attempting create for {}", flight);
+//                 let schema = batch.schema().deref().clone();
+//                 create_table(catalog.clone(), &namespace, &flight, Arc::new(schema))
+//                     .await
+//                     .map_err(|e| IcebergError::TableError(e.to_string()))?;
+//                 // try load again
+//                 load_table(catalog.clone(), &table_ident).await?
+//             }
+//         };
+//
+//         // 5) Create writer and write with a small retry for transient errors
+//         let wb = create_parquet_writer(&table)
+//             .map_err(|e| IcebergError::StorageError(format!("writer build: {}", e)))?;
+//
+//         // simplistic retry loop
+//         let mut attempt = 0usize;
+//         let data_files = loop {
+//             attempt += 1;
+//             match write_and_close(wb.clone(), batch.clone()).await {
+//                 Ok(dfiles) => break dfiles,
+//                 Err(e) if attempt < 3 => {
+//                     warn!(
+//                         "write_and_close failed (attempt {}): {:?}, retrying",
+//                         attempt, e
+//                     );
+//                     tokio::time::sleep(std::time::Duration::from_millis(200 * attempt as u64))
+//                         .await;
+//                     continue;
+//                 }
+//                 Err(e) => {
+//                     error!("write_and_close failed finally: {:?}", e);
+//                     return Err(e);
+//                 }
+//             }
+//         };
+//
+//         // 6) Commit
+//         if let Err(e) = commit_transaction(&table, data_files, catalog.clone()).await {
+//             error!("commit_transaction failed: {:?}", e);
+//             return Err(e);
+//         }
+//     }
+//
+//     Ok(())
+// }
 
 pub async fn write_and_close(
     data_file_writer_builder: DataFileWriterBuilder<
@@ -169,7 +224,9 @@ pub async fn write_and_close(
         IcebergError::StorageError(format!("Failed to build DataFileWriter: {:?}", e))
     })?;
     println!("Arrow RecordBatch schema: {:?}", batch.schema());
+    info!("Arrow RecordBatch schema: {:?}", batch.schema());
     println!("Number of columns: {}", batch.num_columns());
+    info!("Number of columns: {}", batch.num_columns());
     let schema = batch.schema();
     for i in 0..batch.num_columns() {
         let field = schema.field(i);
@@ -214,12 +271,12 @@ pub async fn write_and_close(
 pub async fn commit_transaction(
     table: &Table,
     data_files: Vec<DataFile>,
-    catalog: Arc<Mutex<RestCatalog>>,
+    catalog: Arc<RestCatalog>,
 ) -> Result<Table, IcebergError> {
     let tx = Transaction::new(table);
     let commit_id = Some(Uuid::now_v7());
     let key_metadata = vec![];
-
+    info!("Commited to table: {:?}", table);
     let mut fast_append = tx.fast_append(commit_id, key_metadata).map_err(|e| {
         IcebergError::StorageError(format!("Failed to create fast append: {:?}", e))
     })?;
@@ -233,7 +290,6 @@ pub async fn commit_transaction(
         .await
         .map_err(|e| IcebergError::StorageError(format!("Failed to apply transaction: {:?}", e)))?;
 
-    let catalog = catalog.lock().await;
     updated_tx
         .commit(&*catalog)
         .await

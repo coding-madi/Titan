@@ -1,0 +1,56 @@
+meta {
+  name: metric-rule
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/metric-rule
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "rule_name": "error_rate_rule",
+    "flight_name": "log",
+    "scope": "Global",
+    "window_sec": 60,
+    "filter": {
+      "And": [
+        {
+          "Eq": ["status", "500"]
+        },
+        {
+          "RegexMatch": ["service_name", "auth.*"]
+        }
+      ]
+    },
+    "group_by": ["service_name", "endpoint"],
+    "aggregations": [
+      {
+        "Count": null
+      },
+      {
+        "Sum": {
+          "CastToInt": "latency_ms"
+        }
+      },
+      {
+        "Avg": {
+          "Field": "latency_ms"
+        }
+      },
+      {
+        "Max": {
+          "CastToFloat": "latency_ms"
+        }
+      }
+    ]
+  }
+  
+}
+
+settings {
+  encodeUrl: true
+}

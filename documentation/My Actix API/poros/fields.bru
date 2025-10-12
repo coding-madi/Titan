@@ -1,0 +1,22 @@
+meta {
+  name: fields
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/sql
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "sql": "desc log",
+    "stream_name": "log"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

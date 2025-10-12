@@ -3,6 +3,8 @@ use crate::core::rhai::query_planner::QueryPlanner;
 use rhai::{AST, Dynamic, Engine, FnPtr};
 use tracing::{debug, error};
 
+/// The RHAI parser parses the script and converts it into a QueryPlan
+/// that RUST can natively execute instead of RHAI runtime
 pub struct RhaiParser {
     engine: Engine,
 }
@@ -12,19 +14,19 @@ impl RhaiParser {
         Self { engine }
     }
 
-    pub fn parse_script(&self, script: &str) -> Result<AST, RhaiError> {
+    fn parse_script(&self, script: &str) -> Result<AST, RhaiError> {
         self.engine
             .compile(script)
             .map_err(|e| RhaiError::ScriptCompilation(e.to_string()))
     }
 
-    pub fn evaluate_ast(&self, ast: &AST) -> Result<rhai::Dynamic, RhaiError> {
+    fn evaluate_ast(&self, ast: &AST) -> Result<rhai::Dynamic, RhaiError> {
         self.engine
             .eval_ast(ast)
             .map_err(|e| RhaiError::ScriptCompilation(e.to_string()))
     }
 
-    pub fn compile_to_fn_ptr(&self, dynamic: rhai::Dynamic) -> Result<Vec<FnPtr>, RhaiError> {
+    fn compile_to_fn_ptr(&self, dynamic: Dynamic) -> Result<Vec<FnPtr>, RhaiError> {
         let array: Vec<Dynamic> = dynamic
             .try_cast()
             .ok_or_else(|| RhaiError::TypeMismatch("Expected array from Rhai script".into()))?;
@@ -40,11 +42,7 @@ impl RhaiParser {
         Ok(fns)
     }
 
-    pub fn execute_fn_ptrs(
-        &self,
-        ast: &AST,
-        fns: Vec<FnPtr>,
-    ) -> Result<Vec<QueryPlanner>, RhaiError> {
+    fn execute_fn_ptrs(&self, ast: &AST, fns: Vec<FnPtr>) -> Result<Vec<QueryPlanner>, RhaiError> {
         let mut plans = Vec::with_capacity(fns.len());
 
         for f in fns {

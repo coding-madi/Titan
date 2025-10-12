@@ -1,4 +1,4 @@
-use crate::application::actors::parser_actor::TryParsingRegex;
+use crate::application::actors::parser::handlers::try_parsing_regex::TryParsingRegex;
 use crate::core::error::exception::regex::RegexError;
 use crate::core::utils::regex::validate_regex_pattern;
 use actix::Message;
@@ -45,7 +45,7 @@ impl From<crate::core::parser::messages::parser::Pattern> for Pattern {
             crate::core::parser::messages::parser::Pattern::RegexPattern(p) => {
                 Pattern::RegexPattern(p.into())
             }
-            crate::core::parser::messages::parser::Pattern::GrokPattern(p) => {
+            crate::core::parser::messages::parser::Pattern::GrokPattern(_p) => {
                 unimplemented!()
             }
         }
