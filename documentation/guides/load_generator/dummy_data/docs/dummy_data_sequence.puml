@@ -1,0 +1,35 @@
+@startuml
+actor User
+participant "SimpleFlightClient (dummy_data.py)" as Client
+participant "FlightServer (flight_server.py)" as Server
+
+== Setup & Data Generation ==
+User -> Client: Start script
+Client -> Client: Generate Arrow tables (OTEL logs)
+
+== Data Upload (do_put) ==
+Client -> Server: do_put(descriptor, table.schema)
+Server -> Server: Store table in _tables[path]
+Server --> Client: Ack (metadata)
+
+== List Flights (list_flights) ==
+Client -> Server: list_flights()
+Server -> Server: Iterate _tables
+Server --> Client: FlightInfo (for each path)
+
+== Data Retrieval (do_get) ==
+Client -> Server: do_get(ticket)
+Server -> Server: Lookup table by path
+Server --> Client: RecordBatchStream(table)
+
+== Benchmark Loop ==
+loop 100x
+    Client -> Server: do_put(batch_path, batch_table)
+    Server -> Server: Store batch table
+    Server --> Client: Ack (metadata)
+end
+
+== Metrics & Output ==
+Client -> Client: Calculate throughput, ops/sec
+Client -> User: Print results
+@enduml

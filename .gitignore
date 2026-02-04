@@ -1,0 +1,13 @@
+/target
+rs_cd.log
+*.html
+*.tex
+*.pdf
+*.odt
+**/venv
+.vscode/launch.json
+*.pyc
+*.log
+.idea
+.svg
+*.db

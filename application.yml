@@ -1,0 +1,13 @@
+database:
+  database_type: Sqlite #[postgres, sqlite]
+  host: localhost
+  port: 5432
+  username: myuser
+  password: mypassword
+  database_name: log
+  max_active_connections: 10
+flight:
+  address: 127.0.0.1
+  port: 50051
+server: ALL
+

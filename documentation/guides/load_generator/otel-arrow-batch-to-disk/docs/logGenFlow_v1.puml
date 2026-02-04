@@ -1,0 +1,13 @@
+@startuml LogGen_flow
+actor User
+participant "main.py" as Main
+participant "generator.py" as Generator
+participant "writer.py" as Writer
+participant "Poros Flight Server" as FlightServer
+
+User -> Main: Start script
+Main -> Generator: generate_log() x N/sec
+Generator --> Main: Log records
+Main -> Writer: append_to_stream(batch_records)
+Writer -> FlightServer: Send Arrow batch via Flight
+@enduml

@@ -1,0 +1,66 @@
+[package]
+name = "poros"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+actix = "0.13.5"
+actix-web = "4.11.0"
+tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread", "fs"]}
+tonic = "0.12.3"
+
+# observability
+tracing = {version = "0.1.41"}
+tracing-subscriber = {version = "0.3.19", features = ["registry", "env-filter"]}
+tracing-bunyan-formatter = "=0.3.10"
+tracing-log = "0.2.0"
+tracing-actix-web = "0.7.18"
+
+# security
+secrecy = { version = "0.10.3", features = ["serde"] }
+
+# serializers
+serde = "1.0.219"
+serde_derive = "1.0.219"
+config = { version = "0.15.11", features = ["yaml"] } # read yaml, json file
+clap = { version = "4", features = ["derive"] } # Use the latest clap version (e.g., "4")
+flatbuffers = "24.3.25"  # Optional if you use it inside build.rs
+arrow = {version = "=53.2.0"}
+arrow-array = "=53.2.0"
+arrow-flight = "=53.2.0"
+arrow-ipc = "=53.2.0"
+arrow-schema = "=53.2.0"
+chrono = "=0.4.38"
+futures-util = "0.3.31"
+futures = "0.3.31"
+tempfile = "3.20.0"
+crc32fast = "1.4.2"
+bytemuck = "1.14"
+validator = { version = "0.20.0", features = ["derive"] }
+regex = "1.11.1"
+async-trait = "0.1.88"
+num_cpus = "1.17.0"
+
+[dependencies.sqlx]
+version = "0.8.6"
+default-features = false
+features = [ "macros", "postgres", "uuid", "chrono", "migrate", "runtime-tokio", "sqlite"]
+
+[dev-dependencies]
+reqwest = "0.12.20"
+
+[build-dependencies]
+flatbuffers = "24.3.25"  # Optional if you use it inside build.rs
+
+# The below configuration provides very small build files
+#[profile.release]
+#strip = true      # Removes debug symbols
+#lto = true        # Link Time Optimization
+#opt-level = "z"   # Optimize for size (instead of speed)
+#codegen-units = 1 # Fewer units = better LTO, smaller binary
+#panic = "abort"   # Removes stack unwinding logic
+
+[profile.release]
+debug = true
+
+

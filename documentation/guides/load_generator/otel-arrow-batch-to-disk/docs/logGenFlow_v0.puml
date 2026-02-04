@@ -1,0 +1,16 @@
+@startuml LogGen_flow
+actor User
+participant "main.py" as Main
+participant "generator.py" as Generator
+participant "writer.py" as Writer
+participant "files/*.arrow" as ArrowFile
+participant "files/otel_logs.stream" as StreamFile
+
+User -> Main: Start script
+Main -> Generator: generate_log() x N/sec
+Generator --> Main: Log records
+Main -> Writer: write_arrow_file(batch_records)
+Writer -> ArrowFile: Write Arrow batch
+Main -> Writer: append_to_stream(batch_records)
+Writer -> StreamFile: Append to stream
+@enduml
