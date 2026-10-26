@@ -59,3 +59,4 @@ rustup component add clippy
 #+begin_src bash
 cargo install --version=0.5.7 sqlx-cli --no-default-features --features postgres
 #+end_src
+
